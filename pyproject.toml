@@ -32,3 +32,9 @@ pythonVersion = "3.14"
 typeCheckingMode = "strict"
 include = ["src", "tests", "amoeboid.py"]
 stubPath = "typings"
+# The top-level amoeboid.py shim would otherwise shadow the `amoeboid` package.
+executionEnvironments = [
+  { root = "src" },
+  { root = "tests", extraPaths = ["src"] },
+  { root = "amoeboid.py", extraPaths = ["src"] },
+]
