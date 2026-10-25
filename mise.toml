@@ -25,3 +25,8 @@ run = ["uv run ruff check --fix", "uv run ruff format"]
 [tasks.install]
 description = "Install the `amoeboid` command (editable, tracks this checkout)"
 run = "uv tool install --editable --force ."
+
+[tasks.test-thorough]
+description = "Run the test suite with many more property-test examples"
+env = { HYPOTHESIS_PROFILE = "thorough" }
+run = "uv run pytest"

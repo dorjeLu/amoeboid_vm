@@ -25,7 +25,7 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PTH", "TRY", "C4"]
-ignore = ["PLR0913", "PLR2004", "TRY003", "TRY300"]
+ignore = ["PLR0911", "PLR0913", "PLR2004", "TRY003", "TRY300"]
 
 [tool.basedpyright]
 pythonVersion = "3.14"

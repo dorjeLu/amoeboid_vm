@@ -13,40 +13,45 @@ Exceptions are converted at the edges with `attempt`; nothing inside the rails r
 import functools
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Never, cast
+from typing import Generic, Never, TypeVar, cast
+
+# Explicitly covariant (PEP 695 inference makes frozen dataclasses invariant), so that
+# e.g. an Ok[int] is usable where a Result[int | None, E] is expected.
+_T_co = TypeVar("_T_co", covariant=True)
+_E_co = TypeVar("_E_co", covariant=True)
 
 
 @dataclass(frozen=True, slots=True)
-class Ok[T]:
-    value: T
+class Ok(Generic[_T_co]):  # noqa: UP046
+    value: _T_co
 
-    def map[U](self, f: Callable[[T], U]) -> Ok[U]:
+    def map[U](self, f: Callable[[_T_co], U]) -> Ok[U]:
         return Ok(f(self.value))
 
-    def bind[U, E](self, f: Callable[[T], Result[U, E]]) -> Result[U, E]:
+    def bind[U, E](self, f: Callable[[_T_co], Result[U, E]]) -> Result[U, E]:
         return f(self.value)
 
-    def map_err(self, f: Callable[[Never], object]) -> Ok[T]:
+    def map_err(self, f: Callable[[Never], object]) -> Ok[_T_co]:
         return self
 
-    def or_bail(self) -> T:
+    def or_bail(self) -> _T_co:
         return self.value
 
-    def unwrap_or[U](self, default: U) -> T | U:
+    def unwrap_or[U](self, default: U) -> _T_co | U:
         return self.value
 
 
 @dataclass(frozen=True, slots=True)
-class Err[E]:
-    error: E
+class Err(Generic[_E_co]):  # noqa: UP046
+    error: _E_co
 
-    def map(self, f: Callable[[Never], object]) -> Err[E]:
+    def map(self, f: Callable[[Never], object]) -> Err[_E_co]:
         return self
 
-    def bind(self, f: Callable[[Never], object]) -> Err[E]:
+    def bind(self, f: Callable[[Never], object]) -> Err[_E_co]:
         return self
 
-    def map_err[F](self, f: Callable[[E], F]) -> Err[F]:
+    def map_err[F](self, f: Callable[[_E_co], F]) -> Err[F]:
         return Err(f(self.error))
 
     def or_bail(self) -> Never:
