@@ -21,10 +21,12 @@ def vm(paths: Paths) -> VmPaths:
 
 
 @pytest.fixture
-def host_module(tmp_path: Path) -> Path:
-    h = tmp_path / "host_u.nix"
-    h.write_text('{ amoeboid.user = "u"; }')
-    return h
+def host_module(vm: VmPaths) -> Path:
+    match nixconfig.write_host_module(vm, "u", 1000, 100):
+        case Ok(path):
+            return path
+        case Err(error):
+            pytest.fail(error.render())
 
 
 def preset(paths: Paths, name: str, recipe: str) -> Path:
@@ -88,7 +90,7 @@ def test_new_vm_copies_its_preset_and_seeds_both_guest_copies(
     paths: Paths, vm: VmPaths, host_module: Path
 ) -> None:
     base = preset(paths, "default", "v1")
-    assert nixconfig.prepare(vm, None, base, host_module) == Ok(vm.nix_config)
+    assert nixconfig.prepare(vm, None, base) == Ok(vm.nix_config)
     assert (vm.nix_config / "recipe.nix").read_text() == "v1"
     for copy in ("nix", "reference"):
         assert guest(vm, f"{copy}/recipe.nix").read_text() == "v1"
@@ -100,18 +102,18 @@ def test_existing_vm_keeps_its_config_when_the_preset_changes(
     paths: Paths, vm: VmPaths, host_module: Path
 ) -> None:
     base = preset(paths, "default", "v1")
-    nixconfig.prepare(vm, None, base, host_module)
+    nixconfig.prepare(vm, None, base)
     (base / "recipe.nix").write_text("v2")
-    nixconfig.prepare(vm, None, None, host_module)
+    nixconfig.prepare(vm, None, None)
     assert (vm.nix_config / "recipe.nix").read_text() == "v1"
 
 
 def test_guest_edits_stay_in_the_guest(paths: Paths, vm: VmPaths, host_module: Path) -> None:
     base = preset(paths, "default", "v1")
-    nixconfig.prepare(vm, None, base, host_module)
+    nixconfig.prepare(vm, None, base)
     guest(vm, "nix/recipe.nix").write_text("edited by the agent")
     guest(vm, "reference/recipe.nix").write_text("edited by the agent")
-    nixconfig.prepare(vm, None, None, host_module)
+    nixconfig.prepare(vm, None, None)
     assert (vm.nix_config / "recipe.nix").read_text() == "v1"  # never read back
     assert guest(vm, "nix/recipe.nix").read_text() == "edited by the agent"  # never overwritten
     assert guest(vm, "reference/recipe.nix").read_text() == "v1"  # always refreshed
@@ -120,18 +122,18 @@ def test_guest_edits_stay_in_the_guest(paths: Paths, vm: VmPaths, host_module: P
 def test_host_edits_to_the_vm_config_show_up_in_the_reference(
     paths: Paths, vm: VmPaths, host_module: Path
 ) -> None:
-    nixconfig.prepare(vm, None, preset(paths, "default", "v1"), host_module)
+    nixconfig.prepare(vm, None, preset(paths, "default", "v1"))
     (vm.nix_config / "recipe.nix").write_text("host edit")
-    nixconfig.prepare(vm, None, None, host_module)
+    nixconfig.prepare(vm, None, None)
     assert guest(vm, "reference/recipe.nix").read_text() == "host edit"
     assert guest(vm, "nix/recipe.nix").read_text() == "v1"
 
 
 def test_explicit_base_rebases_an_existing_vm(paths: Paths, vm: VmPaths, host_module: Path) -> None:
-    nixconfig.prepare(vm, None, preset(paths, "default", "v1"), host_module)
+    nixconfig.prepare(vm, None, preset(paths, "default", "v1"))
     other = preset(paths, "other", "other")
     (other / "extra.nix").write_text("{ }")
-    nixconfig.prepare(vm, other, None, host_module)
+    nixconfig.prepare(vm, other, None)
     assert (vm.nix_config / "recipe.nix").read_text() == "other"
     assert (vm.nix_config / "extra.nix").exists()
     assert guest(vm, "reference/extra.nix").exists()
@@ -139,20 +141,33 @@ def test_explicit_base_rebases_an_existing_vm(paths: Paths, vm: VmPaths, host_mo
 
 
 def test_deleted_guest_copy_is_reseeded(paths: Paths, vm: VmPaths, host_module: Path) -> None:
-    nixconfig.prepare(vm, None, preset(paths, "default", "v1"), host_module)
+    nixconfig.prepare(vm, None, preset(paths, "default", "v1"))
     shutil.rmtree(guest(vm, "nix"))
-    nixconfig.prepare(vm, None, None, host_module)
+    nixconfig.prepare(vm, None, None)
     assert guest(vm, "nix/recipe.nix").read_text() == "v1"
 
 
 def test_symlinked_guest_dir_is_refused_not_followed(
     paths: Paths, vm: VmPaths, host_module: Path, tmp_path: Path
 ) -> None:
-    nixconfig.prepare(vm, None, preset(paths, "default", "v1"), host_module)
+    nixconfig.prepare(vm, None, preset(paths, "default", "v1"))
     outside = tmp_path / "outside"
     outside.mkdir()
     shutil.rmtree(guest(vm, "reference"))
     guest(vm, "reference").symlink_to(outside)
-    nixconfig.prepare(vm, None, None, host_module)
+    nixconfig.prepare(vm, None, None)
     assert list(outside.iterdir()) == []
     assert not guest(vm, "reference").is_symlink()
+
+
+def test_host_module_is_the_account_from_the_config(vm: VmPaths, host_module: Path) -> None:
+    assert host_module == vm.host_module
+    text = host_module.read_text()
+    assert 'amoeboid.user = "u";' in text
+    assert "amoeboid.uid = 1000;" in text
+    assert "amoeboid.gid = 100;" in text
+
+
+def test_host_module_follows_config_changes(vm: VmPaths, host_module: Path) -> None:
+    nixconfig.write_host_module(vm, "bob", 1001, 1001)
+    assert 'amoeboid.user = "bob";' in host_module.read_text()

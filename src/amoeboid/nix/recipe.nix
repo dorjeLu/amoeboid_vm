@@ -4,6 +4,7 @@
 { config, pkgs, ... }:
 
 {
+  # Size (base.nix defaults: 8 vCPUs, 8192 MiB; avoid exactly 2048 MiB, qemu hangs)
   # microvm.vcpu = 8;
   # microvm.mem = 8192;
 

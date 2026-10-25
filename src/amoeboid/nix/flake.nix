@@ -5,7 +5,8 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     microvm.url = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
-    # Overridden by the launcher (--override-input) with ~/.config/amoeboid/host_<user>.nix.
+    # Overridden by the launcher (--override-input) with the guest account it renders
+    # from run_config.kdl on every start (<data dir>/amoeboid/<vm>/host.nix).
     host = {
       url = "path:./host-default.nix";
       flake = false;

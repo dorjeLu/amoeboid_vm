@@ -15,7 +15,7 @@ from pathlib import Path
 from amoeboid.errors import AppError, because, fail
 from amoeboid.kdl_serde import Document, KdlSerde, Value
 from amoeboid.mounts import Mode, Mount
-from amoeboid.paths import HOST_TEMPLATE, Paths, absolute, is_path_spec
+from amoeboid.paths import Paths, absolute, is_path_spec
 from amoeboid.result import Err, Ok, Result, attempt, railway, traverse
 
 HEADER = """\
@@ -34,7 +34,7 @@ class SshConfig:
 @dataclass(frozen=True, slots=True)
 class RunConfig:
     user: str
-    """Guest user name; also names the rendered host module (host_<user>.nix)."""
+    """Guest user name; with uid/gid, rendered into each VM's host.nix on every start."""
     uid: int
     gid: int
     base_nix_config: str = "default"
@@ -271,31 +271,6 @@ def save(paths: Paths, cfg: RunConfig) -> Result[None, AppError]:
     return attempt(write, because(f"can't write {file}"))
 
 
-@railway
-def ensure_host_module(paths: Paths, cfg: RunConfig) -> Result[Path, AppError]:
-    """Render host_<user>.nix from the bundled template unless it already exists.
-
-    The rendered file is the user's to edit (e.g. to set microvm.vcpu/mem); amoeboid
-    never overwrites it.
-    """
-    target = paths.host_module(cfg.user)
-    if target.exists():
-        return Ok(target)
-    template = attempt(HOST_TEMPLATE.read_text, because("can't read host template")).or_bail()
-    text = (
-        template.replace("@user@", cfg.user)
-        .replace("@uid@", str(cfg.uid))
-        .replace("@gid@", str(cfg.gid))
-    )
-
-    def write() -> Path:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-        return target
-
-    return attempt(write, because(f"can't write {target}"))
-
-
 @dataclass(frozen=True, slots=True)
 class Loaded:
     config: RunConfig
@@ -304,14 +279,11 @@ class Loaded:
 
 @railway
 def load_or_create(paths: Paths, identity: Identity) -> Result[Loaded, AppError]:
-    """Load the configuration, writing a fresh one (and the host module) on first run."""
+    """Load the configuration, writing a fresh one on first run."""
     if paths.config_file.exists():
-        cfg = load(paths).or_bail()
-        ensure_host_module(paths, cfg).or_bail()
-        return Ok(Loaded(cfg, created=False))
+        return load(paths).map(lambda cfg: Loaded(cfg, created=False))
     cfg = initial_config(identity, paths.home)
     save(paths, cfg).or_bail()
-    ensure_host_module(paths, cfg).or_bail()
     return Ok(Loaded(cfg, created=True))
 
 

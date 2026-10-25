@@ -150,15 +150,12 @@ def paths(tmp_path: Path) -> Paths:
 ME = Identity("alice", 1000, 1000)
 
 
-def test_first_run_writes_config_and_host_module(paths: Paths) -> None:
+def test_first_run_writes_only_the_config(paths: Paths) -> None:
     loaded = ok(config.load_or_create(paths, ME))
     assert loaded.created
     assert loaded.config == RunConfig("alice", 1000, 1000, home_files=(".config/git/config",))
     assert paths.config_file.read_text().startswith(config.HEADER)
-    host = paths.host_module("alice").read_text()
-    assert 'amoeboid.user = "alice";' in host
-    assert "amoeboid.uid = 1000;" in host
-    assert "@" not in host
+    assert [p.name for p in paths.config_dir.iterdir()] == ["run_config.kdl"]
 
 
 def test_later_runs_load_without_rewriting(paths: Paths) -> None:
@@ -170,19 +167,12 @@ def test_later_runs_load_without_rewriting(paths: Paths) -> None:
     assert paths.config_file.read_text().startswith("// hand edited")
 
 
-def test_host_module_is_never_overwritten(paths: Paths) -> None:
-    ok(config.load_or_create(paths, ME))
-    paths.host_module("alice").write_text("# mine\n")
-    ok(config.load_or_create(paths, ME))
-    assert paths.host_module("alice").read_text() == "# mine\n"
-
-
 def test_save_replaces_the_file_and_leaves_no_temp_files(paths: Paths) -> None:
     cfg = ok(config.load_or_create(paths, ME)).config
     updated = config.with_default_mounts(cfg, [Mount(Path("/srv"), Mode.RO)])
     ok(config.save(paths, updated))
     assert ok(config.load(paths)) == updated
-    assert {p.name for p in paths.config_dir.iterdir()} == {"run_config.kdl", "host_alice.nix"}
+    assert [p.name for p in paths.config_dir.iterdir()] == ["run_config.kdl"]
 
 
 def test_broken_file_points_at_itself(paths: Paths) -> None:

@@ -262,7 +262,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         ),
         epilog=(
             "keys:\n"
-            "  user, uid, gid     guest account; seeded from the user running amoeboid\n"
+            "  user, uid, gid     guest account; seeded from the user running amoeboid,\n"
+            "                     rendered into each VM's host.nix on every start\n"
             "  base-nix-config    preset name or directory new VMs are created from\n"
             "  default-mounts     shared when `start` gets no MOUNT; a (list) of\n"
             '                     { path "/abs/dir"; mode "rw" | "ro" }\n'
@@ -270,8 +271,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             '                     start, as a (list) of relative paths, e.g. ".gitconfig"\n'
             "  ssh { port N }     loopback port for ssh; 0 picks a free one each start\n"
             "\n"
-            "  Guest user and per-machine NixOS settings (vcpu, memory) live in\n"
-            "  host_<user>.nix next to the config file, rendered once from a template."
+            "  VM sizing (vcpu, memory) and other NixOS settings belong in a preset's or a\n"
+            "  VM's recipe.nix; see `amoeboid presets`."
         ),
     )
     cfg.add_argument("--path", action="store_true", help="print only the file's location")
@@ -283,7 +284,6 @@ def _locations(paths: Paths | None) -> str:
         return "  (unavailable: $HOME is not set)"
     return (
         f"  config      {paths.config_file}\n"
-        f"  host module {paths.config_dir}/host_<user>.nix\n"
         f"  VM state    {paths.data_dir}/NAME/  (guest/home is the VM's home)\n"
         f"  runtime     {paths.runtime_dir}/NAME/  (sockets, pid files)\n"
         f"  presets     {paths.presets_dir}/NAME/  (`default` copied from {BUNDLED_NIX})\n"
@@ -375,7 +375,6 @@ def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
         vm=target,
         home=paths.home,
         config=cfg,
-        host_module=paths.host_module(cfg.user),
         base_nix_config=explicit,
         default_nix_config=default,
         mounts=tuple(mounts),
@@ -464,7 +463,6 @@ def _load(paths: Paths) -> Result[RunConfig, AppError]:
     loaded = config.load_or_create(paths, Identity.of_process()).or_bail()
     if loaded.created:
         log.info("first run: wrote %s", paths.config_file)
-        log.info("           and %s", paths.host_module(loaded.config.user))
     if nixconfig.ensure_default_preset(paths).or_bail():
         log.info("copied the bundled NixOS config to %s", paths.presets_dir / "default")
     return Ok(loaded.config)

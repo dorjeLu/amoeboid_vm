@@ -1,5 +1,6 @@
 # Placeholder for the `host` flake input so the flake evaluates on its own (nix flake
-# check/lock). The launcher always replaces it with ~/.config/amoeboid/host_<user>.nix.
+# check/lock). The launcher always replaces it with the guest account it renders from
+# run_config.kdl.
 { ... }:
 
 {

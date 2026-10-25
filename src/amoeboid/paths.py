@@ -14,7 +14,6 @@ from amoeboid.result import Ok, Result
 
 BUNDLED_NIX = Path(__file__).resolve().parent / "nix"
 """The NixOS configuration shipped with amoeboid; seeds the `default` preset."""
-HOST_TEMPLATE = Path(__file__).resolve().parent / "host.nix.template"
 
 CONFIG_FILE = "run_config.kdl"
 DEFAULT_VM = "default"
@@ -50,6 +49,11 @@ class VmPaths:
     def guest(self) -> Path:
         """Shared into the VM at /mnt/amoeboid; the guest can write anything in here."""
         return self.state / "guest"
+
+    @property
+    def host_module(self) -> Path:
+        """Guest account from run_config.kdl, rendered every start; the flake's `host` input."""
+        return self.state / "host.nix"
 
     @property
     def nix_config(self) -> Path:
@@ -108,9 +112,6 @@ class Paths:
     @property
     def presets_dir(self) -> Path:
         return self.config_dir / "nix_presets"
-
-    def host_module(self, user: str) -> Path:
-        return self.config_dir / f"host_{user}.nix"
 
     def vm(self, name: str) -> VmPaths:
         return VmPaths(name, self.data_dir / name, self.runtime_dir / name)

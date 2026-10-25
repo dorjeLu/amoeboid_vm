@@ -32,7 +32,6 @@ class StartRequest:
     vm: VmPaths
     home: Path
     config: RunConfig
-    host_module: Path
     base_nix_config: Path | None
     """Given explicitly: create (or rebase) the VM from this config dir."""
     default_nix_config: Path | None
@@ -51,10 +50,10 @@ def start(req: StartRequest) -> Result[int, AppError]:
     preflight().or_bail()
     procs.sweep(vm).or_bail()
     prepare_dirs(vm).or_bail()
-    flake = nixconfig.prepare(
-        vm, req.base_nix_config, req.default_nix_config, req.host_module
-    ).or_bail()
-    build(vm, flake, req.host_module).or_bail()
+    cfg = req.config
+    host = nixconfig.write_host_module(vm, cfg.user, cfg.uid, cfg.gid).or_bail()
+    flake = nixconfig.prepare(vm, req.base_nix_config, req.default_nix_config).or_bail()
+    build(vm, flake, host).or_bail()
     ssh.ensure_host_key(vm).or_bail()
     port = (Ok(req.config.ssh.port) if req.config.ssh.port else ssh.free_port()).or_bail()
     write_guest_state(req, port).or_bail()

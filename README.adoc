@@ -37,8 +37,7 @@ Nothing else is installed on the host: qemu, virtiofsd and the guest system are 
 
 The first `amoeboid` command that needs configuration creates, using the account you run it as:
 
-`~/.config/amoeboid/run_config.kdl`:: amoeboid's settings (<<config>>).
-`~/.config/amoeboid/host_<user>.nix`:: your user name, uid and gid for the guest, plus any per-machine NixOS settings. Rendered once, never overwritten; yours to edit.
+`~/.config/amoeboid/run_config.kdl`:: amoeboid's settings, including the guest account (your user name, uid and gid) (<<config>>).
 `~/.config/amoeboid/nix_presets/default/`:: a copy of the NixOS configuration bundled with amoeboid, which new VMs are created from (<<presets>>).
 
 `amoeboid --help` prints the resolved locations of all of these for you.
@@ -116,18 +115,21 @@ First-time setup per VM, e.g. `opencode auth login` or `rustup default stable`, 
 amoeboid's bundled nix/  ──first run──▶  ~/.config/amoeboid/nix_presets/default/
 nix_presets/<preset>/    ──new VM─────▶  ~/.local/share/amoeboid/NAME/nix/   ◀── what is built
 NAME/nix/                ──new VM─────▶  ~/amoeboid/nix/        in the VM    (the VM's own copy)
-NAME/nix/ + host module  ──each start─▶  ~/amoeboid/reference/  in the VM    (what is running)
+run_config.kdl           ──each start─▶  ~/.local/share/amoeboid/NAME/host.nix (guest account)
+NAME/nix/ + NAME/host.nix ─each start─▶  ~/amoeboid/reference/  in the VM    (what is running)
 ----
 
 A configuration is a directory holding a small flake:
 
 [cols="1,3"]
 |===
-|`flake.nix`, `flake.lock` |pins nixpkgs and microvm.nix; takes your host module as its `host` input
+|`flake.nix`, `flake.lock` |pins nixpkgs and microvm.nix; takes the guest account as its `host` input
 |`base.nix` |plumbing amoeboid relies on: user, shares, networking, ssh, console
 |`recipe.nix` |what is in the VM: packages, services, vcpu/memory, tweaks
 |`host-default.nix` |placeholder for the `host` input (amoeboid always overrides it)
 |===
+
+The `host` input is the guest account (`amoeboid.user`, `uid`, `gid`), which amoeboid renders from `run_config.kdl` into `NAME/host.nix` on every start. Configurations therefore contain nothing about you and can be copied or shared as they are. Settings for all your VMs, such as sizing, go in your presets' `recipe.nix`.
 
 === Presets
 
@@ -158,7 +160,7 @@ Rebuilds after small changes take seconds; unchanged configurations aren't rebui
 
 === Adopting changes an agent made
 
-Inside the VM, `~/amoeboid/nix/` is the agent's own full copy of the configuration (with your host module as `host.nix`), and `~/amoeboid/reference/` is what is actually running.
+Inside the VM, `~/amoeboid/nix/` is the agent's own full copy of the configuration (with the generated account module as `host.nix`), and `~/amoeboid/reference/` is what is actually running.
 amoeboid never reads the agent's copy and never overwrites it, so its edits have no effect until you apply them.
 
 On the host, the agent's copy is at `~/.local/share/amoeboid/NAME/guest/home/amoeboid/nix/`. To review and adopt:
@@ -200,7 +202,7 @@ ssh {
 
 [cols="1,3"]
 |===
-|`user`, `uid`, `gid` |the guest account. Change the user here, not only in the host module: a new `host_<user>.nix` is rendered for a new name.
+|`user`, `uid`, `gid` |the guest account, seeded from the account you run amoeboid as. Rendered into each VM's `host.nix` on every start, so a change applies to every VM at its next start. Shares appear owned by this account inside the VM.
 |`base-nix-config` |preset name or directory for new VMs
 |`default-mounts` |shares for a new VM started without `MOUNT`s
 |`home-files` |files under your home copied into each VM's home on every start (host copy wins). Seeded with your git config if you have one; a signing key or credential helper it references won't exist in the VM.
@@ -210,18 +212,12 @@ ssh {
 amoeboid reads the file once per command. It rewrites it only when saving something itself (first run, `--save-mounts`, saving prompted mounts), atomically and in canonical form, keeping only the header comment.
 Unknown keys or bad values stop amoeboid with every problem listed.
 
-`host_<user>.nix` next to it is a NixOS module merged into every VM, e.g. for machine-wide sizing:
+VM sizing and any other NixOS settings live in the configurations, not here. For example, in a preset's or a VM's `recipe.nix`:
 
 [source,nix]
 ----
-{ ... }:
-{
-  amoeboid.user = "alice";
-  amoeboid.uid = 1000;
-  amoeboid.gid = 1000;
-  microvm.vcpu = 4;
-  microvm.mem = 4096; # MiB; avoid exactly 2048, qemu hangs
-}
+microvm.vcpu = 4;
+microvm.mem = 4096; # MiB; avoid exactly 2048, qemu hangs
 ----
 
 == Files on the host
@@ -230,11 +226,11 @@ Unknown keys or bad values stop amoeboid with every problem listed.
 ----
 ~/.config/amoeboid/
 ├── run_config.kdl
-├── host_<user>.nix
 └── nix_presets/<preset>/
 
 ~/.local/share/amoeboid/NAME/          ($XDG_DATA_HOME)
 ├── nix/                     the VM's configuration (built every start)
+├── host.nix                 guest account from run_config.kdl (rendered every start)
 ├── vm -> /nix/store/...     last build: runner + virtiofsd (also a GC root)
 ├── mounts                   last run's shares
 ├── console.log              console of the last --detach boot
@@ -306,7 +302,7 @@ The guest won't power off::
 
 == How it works
 
-. `start` copies a preset to `NAME/nix/` for a new VM, refreshes the guest copies, then runs `nix build path:NAME/nix` with the `host` input overridden by `host_<user>.nix`. The result links the microvm.nix qemu runner and virtiofsd.
+. `start` copies a preset to `NAME/nix/` for a new VM, refreshes the guest copies, then runs `nix build path:NAME/nix` with the `host` input overridden by `NAME/host.nix`, rendered from `run_config.kdl`. The result links the microvm.nix qemu runner and virtiofsd.
 . It writes, into the VM's state share, the mount table (`<tag> <rw|ro> <path>`, parents first), hostname, terminal size and ssh host key; and into the runtime dir, the extra qemu arguments: a user-mode network device with a `127.0.0.1:PORT -> 22` forward, plus one `vhost-user-fs-pci` device per share. Nothing that varies per start is part of the build.
 . It starts one virtiofsd per share (the host store read-only, the state share, each `MOUNT`), as you, mapping the guest user's ids onto yours. Each is recorded in a pid file and cleaned up on exit, failure, Ctrl-C, SIGTERM or SIGHUP.
 . It runs the microvm.nix runner, which reads the extra arguments, so devices attach without rebuilding.
