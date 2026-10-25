@@ -53,26 +53,6 @@ type Tree = dict[str, bytes]
 """A directory's regular files: POSIX relative path -> contents."""
 
 
-def read_file(root: Path, rel: str, limit: int) -> Result[bytes | None, AppError]:
-    """Read `root/rel` if it is a regular file (never through a symlink); None if absent."""
-    parts = PurePosixPath(rel).parts
-    try:
-        with _walk(root, parts[:-1], create=False) as dir_fd:
-            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
-            fd = os.open(parts[-1], flags, dir_fd=dir_fd)
-            with os.fdopen(fd, "rb") as f:
-                if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
-                    return fail(f"refusing to read {root / rel}: not a regular file")
-                data = f.read(limit + 1)
-    except FileNotFoundError:
-        return Ok(None)
-    except OSError as exc:
-        return _refused(root, rel, exc)
-    if len(data) > limit:
-        return fail(f"refusing to read {root / rel}: larger than {limit} bytes")
-    return Ok(data)
-
-
 def replace_tree(root: Path, rel: str, tree: Tree) -> Result[None, AppError]:
     """Make `root/rel` contain exactly `tree`, deleting whatever was there."""
     parts = PurePosixPath(rel).parts

@@ -40,7 +40,8 @@ configs = st.builds(
     user=st.from_regex(r"[a-z_][a-z0-9_-]{0,31}", fullmatch=True).filter(lambda u: u != "root"),
     uid=st.integers(1, 2**32 - 2),
     gid=st.integers(1, 2**32 - 2),
-    recipe=st.none() | abs_paths,
+    base_nix_config=st.from_regex(r"[A-Za-z0-9][A-Za-z0-9._-]{0,15}", fullmatch=True)
+    | abs_paths.map(str),
     default_mounts=st.lists(st.builds(Mount, abs_paths, st.sampled_from(Mode))).map(tuple),
     home_files=st.lists(rel_files).map(tuple),
     ssh=st.builds(SshConfig, st.just(0) | st.integers(1024, 65535)),
@@ -71,7 +72,7 @@ def test_rendered_example() -> None:
         'user "alice"\n'
         "uid 1000\n"
         "gid 100\n"
-        "recipe #null\n"
+        'base-nix-config "default"\n'
         "(list)default-mounts {\n"
         "    - {\n"
         '        path "/home/alice/dev"\n'
@@ -100,10 +101,10 @@ def test_minimal_file_gets_defaults() -> None:
 
 
 def test_relative_paths_resolve_against_the_config_dir() -> None:
-    text = 'user "bob"; uid 1; gid 1; recipe "my/recipe.nix"\n'
+    text = 'user "bob"; uid 1; gid 1; base-nix-config "./presets/mine"\n'
     text += '(list)default-mounts { - { path "../dev" } }'
     cfg = ok(config.parse(text, BASE))
-    assert cfg.recipe == Path("/cfg/my/recipe.nix")
+    assert cfg.base_nix_config == "/cfg/presets/mine"
     assert cfg.default_mounts == (Mount(Path("/dev"), Mode.RW),)
 
 
@@ -111,7 +112,7 @@ def test_every_problem_is_reported() -> None:
     text = """
         user "root"
         uid #true
-        recipe 3
+        base-nix-config 3
         (list)default-mounts { - { path "/x"; mode "rx" }; - "/y" }
         (list)home-files { - "../escape"; - "/abs" }
         ssh { port 22; colour "red" }
@@ -122,7 +123,7 @@ def test_every_problem_is_reported() -> None:
         "user: 'root' isn't a usable account name",
         "uid: expected an integer, got True",
         "gid: missing",
-        "recipe: expected a string, got 3",
+        "base-nix-config: expected a string, got 3",
         "default-mounts: item 0: mode must be one of rw, ro, got 'rx'",
         "home-files: item 0: '../escape' must be a path relative to $HOME",
         "ssh: port: use 0 (pick a free port) or 1024..65535",

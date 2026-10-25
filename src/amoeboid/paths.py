@@ -13,12 +13,18 @@ from amoeboid.errors import AppError, fail
 from amoeboid.result import Ok, Result
 
 BUNDLED_NIX = Path(__file__).resolve().parent / "nix"
-"""The flake, base module, default recipe and host-module template shipped with amoeboid."""
+"""The NixOS configuration shipped with amoeboid; seeds the `default` preset."""
+HOST_TEMPLATE = Path(__file__).resolve().parent / "host.nix.template"
 
 CONFIG_FILE = "run_config.kdl"
 DEFAULT_VM = "default"
 
 _VM_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,62}")
+
+
+def is_path_spec(spec: str) -> bool:
+    """`--base-nix-config` takes a preset name, or a path if it looks like one."""
+    return "/" in spec or spec.startswith(("~", "."))
 
 
 def absolute(path: str | Path, base: Path) -> Path:
@@ -44,6 +50,11 @@ class VmPaths:
     def guest(self) -> Path:
         """Shared into the VM at /mnt/amoeboid; the guest can write anything in here."""
         return self.state / "guest"
+
+    @property
+    def nix_config(self) -> Path:
+        """This VM's own copy of its NixOS configuration (host-owned); what gets built."""
+        return self.state / "nix"
 
     @property
     def last_mounts(self) -> Path:
@@ -93,6 +104,10 @@ class Paths:
     @property
     def config_file(self) -> Path:
         return self.config_dir / CONFIG_FILE
+
+    @property
+    def presets_dir(self) -> Path:
+        return self.config_dir / "nix_presets"
 
     def host_module(self, user: str) -> Path:
         return self.config_dir / f"host_{user}.nix"

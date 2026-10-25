@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
-from amoeboid import guestfs, plan, procs, qmp, recipe, ssh
+from amoeboid import guestfs, nixconfig, plan, procs, qmp, ssh
 from amoeboid.config import RunConfig
 from amoeboid.errors import AppError, because, fail
 from amoeboid.mounts import Mode, Mount
-from amoeboid.paths import BUNDLED_NIX, DEFAULT_VM, Paths, VmPaths
+from amoeboid.paths import DEFAULT_VM, Paths, VmPaths
 from amoeboid.result import Err, Ok, Result, attempt, ensure, railway, traverse
 
 log = logging.getLogger(__name__)
@@ -33,7 +33,10 @@ class StartRequest:
     home: Path
     config: RunConfig
     host_module: Path
-    recipe: Path
+    base_nix_config: Path | None
+    """Given explicitly: create (or rebase) the VM from this config dir."""
+    default_nix_config: Path | None
+    """What a new VM is created from otherwise (resolved only when creating one)."""
     mounts: tuple[Mount, ...]
     detach: bool
     boot_timeout: float
@@ -48,9 +51,10 @@ def start(req: StartRequest) -> Result[int, AppError]:
     preflight().or_bail()
     procs.sweep(vm).or_bail()
     prepare_dirs(vm).or_bail()
-    packages = recipe.prepare_packages(vm).or_bail()
-    recipe.publish_reference(vm, req.recipe, req.host_module).or_bail()
-    build(vm, req.recipe, req.host_module, packages).or_bail()
+    flake = nixconfig.prepare(
+        vm, req.base_nix_config, req.default_nix_config, req.host_module
+    ).or_bail()
+    build(vm, flake, req.host_module).or_bail()
     ssh.ensure_host_key(vm).or_bail()
     port = (Ok(req.config.ssh.port) if req.config.ssh.port else ssh.free_port()).or_bail()
     write_guest_state(req, port).or_bail()
@@ -95,9 +99,9 @@ def prepare_dirs(vm: VmPaths) -> Result[None, AppError]:
     return guestfs.ensure_dir(vm.guest, "home")
 
 
-def build(vm: VmPaths, recipe: Path, host_module: Path, packages: Path) -> Result[None, AppError]:
-    log.info("building %s ...", recipe)
-    argv = plan.nix_build_argv(BUNDLED_NIX, recipe, host_module, packages, vm.build_link)
+def build(vm: VmPaths, flake: Path, host_module: Path) -> Result[None, AppError]:
+    log.info("building %s ...", flake)
+    argv = plan.nix_build_argv(flake, host_module, vm.build_link)
     return run_checked(argv, "nix build failed (output above)")
 
 

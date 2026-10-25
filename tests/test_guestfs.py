@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from amoeboid import guestfs
@@ -64,25 +63,3 @@ def test_ensure_dir(tmp_path: Path) -> None:
     assert guestfs.ensure_dir(tmp_path, "home") == Ok(None)
     assert guestfs.ensure_dir(tmp_path, "home") == Ok(None)
     assert (tmp_path / "home").is_dir()
-
-
-def test_read_file(tmp_path: Path) -> None:
-    (tmp_path / "a").mkdir()
-    (tmp_path / "a/f").write_bytes(b"data")
-    assert guestfs.read_file(tmp_path, "a/f", 100) == Ok(b"data")
-    assert guestfs.read_file(tmp_path, "a/missing", 100) == Ok(None)
-    assert isinstance(guestfs.read_file(tmp_path, "a/f", 3), Err)
-
-
-def test_read_file_refuses_links_and_specials(tmp_path: Path) -> None:
-    secret = tmp_path / "secret"
-    secret.write_text("host secret")
-    share = tmp_path / "share"
-    (share / "d").mkdir(parents=True)
-    (share / "link").symlink_to(secret)
-    (share / "dirlink").symlink_to(tmp_path)
-    os.mkfifo(share / "fifo")
-    assert isinstance(guestfs.read_file(share, "link", 100), Err)
-    assert isinstance(guestfs.read_file(share, "dirlink/secret", 100), Err)
-    assert isinstance(guestfs.read_file(share, "fifo", 100), Err)
-    assert isinstance(guestfs.read_file(share, "d", 100), Err)

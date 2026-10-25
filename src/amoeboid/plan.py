@@ -21,9 +21,7 @@ class Share:
     mode: Mode
 
 
-def nix_build_argv(
-    flake: Path, recipe: Path, host_module: Path, packages: Path, out_link: Path
-) -> list[str]:
+def nix_build_argv(flake: Path, host_module: Path, out_link: Path) -> list[str]:
     return [
         "nix",
         "--extra-experimental-features",
@@ -31,14 +29,8 @@ def nix_build_argv(
         "build",
         f"path:{flake}",
         "--override-input",
-        "recipe",
-        f"path:{recipe}",
-        "--override-input",
         "host",
         f"path:{host_module}",
-        "--override-input",
-        "guestPackages",
-        f"path:{packages}",
         "--no-write-lock-file",
         "--out-link",
         str(out_link),

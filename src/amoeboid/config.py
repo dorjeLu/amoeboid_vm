@@ -15,10 +15,8 @@ from pathlib import Path
 from amoeboid.errors import AppError, because, fail
 from amoeboid.kdl_serde import Document, KdlSerde, Value
 from amoeboid.mounts import Mode, Mount
-from amoeboid.paths import BUNDLED_NIX, Paths, absolute
+from amoeboid.paths import HOST_TEMPLATE, Paths, absolute, is_path_spec
 from amoeboid.result import Err, Ok, Result, attempt, railway, traverse
-
-HOST_TEMPLATE = BUNDLED_NIX / "host.nix.template"
 
 HEADER = """\
 // amoeboid run configuration (KDL v2). Read once per command, never hot-reloaded.
@@ -39,8 +37,8 @@ class RunConfig:
     """Guest user name; also names the rendered host module (host_<user>.nix)."""
     uid: int
     gid: int
-    recipe: Path | None = None
-    """NixOS module describing the VM's contents; None means the bundled recipe."""
+    base_nix_config: str = "default"
+    """Preset name (under nix_presets/) or directory that new VMs are created from."""
     default_mounts: tuple[Mount, ...] = ()
     """Shared when `start` is given no mounts."""
     home_files: tuple[str, ...] = ()
@@ -83,7 +81,7 @@ def to_document(cfg: RunConfig) -> Document:
         "user": cfg.user,
         "uid": cfg.uid,
         "gid": cfg.gid,
-        "recipe": None if cfg.recipe is None else str(cfg.recipe),
+        "base-nix-config": cfg.base_nix_config,
         "default-mounts": mounts,
         "home-files": home_files,
         "ssh": {"port": cfg.ssh.port},
@@ -103,15 +101,18 @@ def from_document(doc: Document, base: Path) -> Result[RunConfig, AppError]:
         _required(doc, "user", _user),
         _required(doc, "uid", _int_in(1, 2**32 - 2)),
         _required(doc, "gid", _int_in(1, 2**32 - 2)),
-        _optional(doc, "recipe", _nullable(_path(base)), None),
+        _optional(doc, "base-nix-config", _base_nix_config(base), "default"),
         _optional(doc, "default-mounts", _list_of(_mount(base)), []),
         _optional(doc, "home-files", _list_of(_home_file), []),
         _optional(doc, "ssh", _ssh, SshConfig()),
-        _known_keys(doc, {"user", "uid", "gid", "recipe", "default-mounts", "home-files", "ssh"}),
+        _known_keys(
+            doc,
+            {"user", "uid", "gid", "base-nix-config", "default-mounts", "home-files", "ssh"},
+        ),
     )
     match results:
-        case (Ok(user), Ok(uid), Ok(gid), Ok(recipe), Ok(mounts), Ok(home_files), Ok(ssh), Ok()):
-            return Ok(RunConfig(user, uid, gid, recipe, tuple(mounts), tuple(home_files), ssh))
+        case (Ok(user), Ok(uid), Ok(gid), Ok(nix), Ok(mounts), Ok(home_files), Ok(ssh), Ok()):
+            return Ok(RunConfig(user, uid, gid, nix, tuple(mounts), tuple(home_files), ssh))
         case _:
             problems = [r.error for r in results if isinstance(r, Err)]
             return fail("invalid configuration:\n" + "\n".join(f"  {p}" for p in problems))
@@ -164,8 +165,19 @@ def _path(base: Path) -> Decoder[Path]:
     return lambda v: _str(v).map(lambda s: absolute(s, base))
 
 
-def _nullable[T](decode: Decoder[T]) -> Decoder[T | None]:
-    return lambda v: Ok(None) if v is None else decode(v)
+def _base_nix_config(base: Path) -> Decoder[str]:
+    """A preset name stays a name; a path is made absolute against the config dir."""
+
+    def decode(v: Value) -> Result[str, str]:
+        match _str(v):
+            case Ok(s) if not s:
+                return Err("must be a preset name or a directory path")
+            case Ok(s) if is_path_spec(s):
+                return Ok(str(absolute(s, base)))
+            case other:
+                return other
+
+    return decode
 
 
 def _list_of[T](decode: Decoder[T]) -> Decoder[list[T]]:

@@ -49,37 +49,11 @@
         "type": "github"
       }
     },
-    "packages": {
-      "flake": false,
-      "locked": {
-        "path": "./packages-default.nix",
-        "type": "path"
-      },
-      "original": {
-        "path": "./packages-default.nix",
-        "type": "path"
-      },
-      "parent": []
-    },
-    "recipe": {
-      "flake": false,
-      "locked": {
-        "path": "./recipe.nix",
-        "type": "path"
-      },
-      "original": {
-        "path": "./recipe.nix",
-        "type": "path"
-      },
-      "parent": []
-    },
     "root": {
       "inputs": {
         "host": "host",
         "microvm": "microvm",
-        "nixpkgs": "nixpkgs",
-        "packages": "packages",
-        "recipe": "recipe"
+        "nixpkgs": "nixpkgs"
       }
     },
     "spectrum": {

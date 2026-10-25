@@ -5,25 +5,18 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     microvm.url = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
-    # All three are overridden by the launcher (--override-input): `recipe` with the
-    # recipe, `host` with ~/.config/amoeboid/host_<user>.nix, `guestPackages` with the module
-    # it renders from the VM's packages.kdl. A file is imported as-is, a directory via
-    # its default.nix.
-    recipe = {
-      url = "path:./recipe.nix";
-      flake = false;
-    };
+    # Overridden by the launcher (--override-input) with ~/.config/amoeboid/host_<user>.nix.
     host = {
       url = "path:./host-default.nix";
       flake = false;
     };
-    guestPackages = {
-      url = "path:./packages-default.nix";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, microvm, recipe, host, guestPackages }:
+  # amoeboid copies this directory as a preset (~/.config/amoeboid/nix_presets/<name>),
+  # then per VM. Any directory works as a preset if its flake takes a `host` input and
+  # provides packages.x86_64-linux.default with `runner` and `virtiofsd`, and its NixOS
+  # configuration keeps base.nix's contract (shares, extra-args file, control socket).
+  outputs = { self, nixpkgs, microvm, host }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -34,9 +27,8 @@
           { nixpkgs.hostPlatform = system; }
           microvm.nixosModules.microvm
           ./base.nix
-          "${recipe}"
+          ./recipe.nix
           "${host}"
-          "${guestPackages}"
         ];
       };
 

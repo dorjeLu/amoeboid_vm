@@ -45,15 +45,12 @@ def test_virtiofsd_maps_guest_ids_onto_the_host_user() -> None:
     assert argv[-1] == "--readonly"
 
 
-def test_nix_build_overrides_recipe_host_module_and_packages() -> None:
-    argv = plan.nix_build_argv(
-        Path("/f"), Path("/r.nix"), Path("/h.nix"), Path("/p.nix"), Path("/out")
-    )
+def test_nix_build_uses_the_vm_config_and_overrides_the_host_module() -> None:
+    argv = plan.nix_build_argv(Path("/vm/nix"), Path("/h.nix"), Path("/out"))
     assert argv[:4] == ["nix", "--extra-experimental-features", "nix-command flakes", "build"]
-    assert "path:/f" in argv
-    assert argv[argv.index("recipe") + 1] == "path:/r.nix"
+    assert "path:/vm/nix" in argv
     assert argv[argv.index("host") + 1] == "path:/h.nix"
-    assert argv[argv.index("guestPackages") + 1] == "path:/p.nix"
+    assert argv.count("--override-input") == 1
 
 
 def test_ssh_pins_the_host_key_under_an_alias() -> None:

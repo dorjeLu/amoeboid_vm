@@ -1,5 +1,6 @@
-# Default recipe: a NixOS module describing what's in the VM.
-# Copy it somewhere, edit, and point `recipe` in run_config.kdl (or --recipe) at it.
+# The recipe: a NixOS module describing what's in the VM (packages, services, tweaks).
+# Edit it in a preset (~/.config/amoeboid/nix_presets/<name>/) for new VMs, or in a VM's
+# own copy (<data dir>/amoeboid/<vm>/nix/) for that VM.
 { config, pkgs, ... }:
 
 {

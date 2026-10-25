@@ -10,16 +10,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn, TypedDict
 
-from amoeboid import config, plan, ssh, vm
+from amoeboid import config, nixconfig, plan, ssh, vm
 from amoeboid.config import Identity, RunConfig
 from amoeboid.errors import AppError, fail
 from amoeboid.mounts import SPEC_HELP, Mount, parse_spec, validate
-from amoeboid.paths import BUNDLED_NIX, DEFAULT_VM, Paths, absolute, resolve_paths, vm_name
+from amoeboid.paths import BUNDLED_NIX, DEFAULT_VM, Paths, resolve_paths, vm_name
 from amoeboid.result import Err, Ok, Result, attempt, railway, traverse
 
 log = logging.getLogger("amoeboid")
 
 PROG = "amoeboid"
+
+
+BASE_NIX_HELP = (
+    "NixOS config to create the VM from: a preset name (a directory under "
+    "<config dir>/nix_presets; see `amoeboid presets`) or a directory path. On an "
+    "existing VM, replaces its config. Default for new VMs: `base-nix-config` from the "
+    "config file, else `default`"
+)
 
 
 # -- parser -----------------------------------------------------------------------------
@@ -74,9 +82,9 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             "Boot NixOS microVMs that share chosen host directories at their own paths,\n"
             "so coding agents can work on them without reaching the rest of the machine.\n"
             "\n"
-            "A VM's contents come from a recipe (a NixOS module); it gets outbound network,\n"
-            "a persistent home directory, ssh on a loopback port, and the shared dirs,\n"
-            "each read-write or read-only."
+            "A VM is created from a NixOS config preset and keeps its own copy of it; it\n"
+            "gets outbound network, a persistent home directory, ssh on a loopback port,\n"
+            "and the shared dirs, each read-write or read-only."
         ),
         epilog=(
             "typical session:\n"
@@ -108,17 +116,19 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         "start",
         "build and boot a VM",
         description=(
-            "Build the VM from its recipe (fast when nothing changed), share the given\n"
+            "Build the VM from its NixOS config (fast when nothing changed), share the given\n"
             "directories at the same paths inside it, and boot it.\n"
             "\n"
             "By default the VM's serial console takes over this terminal until the guest\n"
             "powers off. With --detach, the boot log is shown until sshd answers, then\n"
             "amoeboid exits and the VM keeps running in the background.\n"
             "\n"
-            "Inside the VM, packages can be searched (nixpkgs-search) but not installed.\n"
-            "The VM may request packages in ~/amoeboid/packages.kdl; they are added when\n"
-            "it is next started from here (`amoeboid restart`). Nothing else it writes\n"
-            "affects how it is built or launched; rebooting from inside just shuts it down."
+            "A new VM copies its config from a preset (--base-nix-config, else\n"
+            "`base-nix-config` from the config file, else `default`) into\n"
+            "<data dir>/NAME/nix, which is what every later start builds; edit it there.\n"
+            "The VM gets its own editable copy in ~/amoeboid/nix, which is never read\n"
+            "back, and the running config in ~/amoeboid/reference. Packages can be\n"
+            "searched inside the VM (nixpkgs-search) but not installed."
         ),
         epilog=(
             "mounts:\n"
@@ -133,7 +143,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             "examples:\n"
             "  amoeboid start ~/dev/app\n"
             "  amoeboid start --name scratch --detach . ~/dev/shared:ro\n"
-            "  amoeboid start --recipe ./my-recipe.nix --save-mounts ~/dev"
+            "  amoeboid start --name rusty --base-nix-config mycustom ~/dev/crate\n"
+            "  amoeboid start --base-nix-config ./my-nix-dir --save-mounts ~/dev"
         ),
     )
     _name_option(start)
@@ -143,12 +154,7 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         help="boot in the background; return once ssh works (console log: "
         "<data dir>/NAME/console.log)",
     )
-    start.add_argument(
-        "--recipe",
-        metavar="PATH",
-        help="NixOS module (file, or directory with default.nix) for this start; "
-        "default: `recipe` from the config, else the bundled recipe",
-    )
+    start.add_argument("--base-nix-config", metavar="NAME|PATH", help=BASE_NIX_HELP)
     start.add_argument(
         "--save-mounts",
         action="store_true",
@@ -206,10 +212,10 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
 
     restart = sub(
         "restart",
-        "stop a VM and start it again, rebuilt from its recipe",
+        "stop a VM and start it again, rebuilt from its config",
         description=(
             "Stop the VM (as `stop` does), then start it detached and rebuilt, e.g. after\n"
-            "it requested packages in ~/amoeboid/packages.kdl. Without\n"
+            "editing its config in <data dir>/NAME/nix. Without\n"
             "MOUNTs it shares what it shared last time (as recorded on the host; nothing\n"
             "the VM writes can change that)."
         ),
@@ -230,12 +236,18 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="how long to wait for sshd after booting (default: 180)",
     )
-    restart.add_argument(
-        "--recipe",
-        metavar="PATH",
-        help="NixOS module for this start; default: `recipe` from the config, else bundled",
-    )
+    restart.add_argument("--base-nix-config", metavar="NAME|PATH", help=BASE_NIX_HELP)
     restart.add_argument("mounts", nargs="*", metavar="MOUNT", help="replaces last run's shares")
+
+    sub(
+        "presets",
+        "list the NixOS config presets new VMs can be created from",
+        description=(
+            "List presets: directories under <config dir>/nix_presets, each a NixOS config\n"
+            "(flake.nix, base.nix, recipe.nix, ...). `default` is copied from amoeboid on\n"
+            "first run; add your own by copying it, then pick one with --base-nix-config."
+        ),
+    )
 
     sub("list", "show VMs, whether they run, and what they share", description="List known VMs.")
 
@@ -251,7 +263,7 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         epilog=(
             "keys:\n"
             "  user, uid, gid     guest account; seeded from the user running amoeboid\n"
-            "  recipe             NixOS module for the VM, or #null for the bundled one\n"
+            "  base-nix-config    preset name or directory new VMs are created from\n"
             "  default-mounts     shared when `start` gets no MOUNT; a (list) of\n"
             '                     { path "/abs/dir"; mode "rw" | "ro" }\n'
             "  home-files         files under $HOME copied into the VM's home on every\n"
@@ -274,7 +286,8 @@ def _locations(paths: Paths | None) -> str:
         f"  host module {paths.config_dir}/host_<user>.nix\n"
         f"  VM state    {paths.data_dir}/NAME/  (guest/home is the VM's home)\n"
         f"  runtime     {paths.runtime_dir}/NAME/  (sockets, pid files)\n"
-        f"  recipe      {BUNDLED_NIX / 'recipe.nix'}  (bundled default)"
+        f"  presets     {paths.presets_dir}/NAME/  (`default` copied from {BUNDLED_NIX})\n"
+        f"  VM config   {paths.data_dir}/NAME/nix/  (what the VM is built from)"
     )
 
 
@@ -285,7 +298,7 @@ def _locations(paths: Paths | None) -> str:
 class Launch:
     name: str
     mounts: list[str]
-    recipe: str | None
+    base_nix_config: str | None
     save_mounts: bool
     detach: bool
     boot_timeout: float
@@ -299,7 +312,7 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     launch = Launch(
         name,
         args.mounts,
-        args.recipe,
+        args.base_nix_config,
         args.save_mounts,
         args.detach,
         args.boot_timeout,
@@ -316,7 +329,7 @@ def cmd_restart(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]
     launch = Launch(
         name,
         args.mounts,
-        recipe=args.recipe,
+        base_nix_config=args.base_nix_config,
         save_mounts=False,
         detach=True,
         boot_timeout=args.boot_timeout,
@@ -348,13 +361,23 @@ def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
         config.save(paths, config.with_default_mounts(cfg, mounts)).or_bail()
         log.info("saved default-mounts to %s", paths.config_file)
 
-    recipe = _recipe(launch.recipe, cfg, cwd).or_bail()
+    explicit = (
+        nixconfig.resolve_base(launch.base_nix_config, paths, cwd).or_bail()
+        if launch.base_nix_config
+        else None
+    )
+    target = paths.vm(name)
+    creating = explicit is None and not target.nix_config.is_dir()
+    default = (
+        nixconfig.resolve_base(cfg.base_nix_config, paths, cwd).or_bail() if creating else None
+    )
     request = vm.StartRequest(
-        vm=paths.vm(name),
+        vm=target,
         home=paths.home,
         config=cfg,
         host_module=paths.host_module(cfg.user),
-        recipe=recipe,
+        base_nix_config=explicit,
+        default_nix_config=default,
         mounts=tuple(mounts),
         detach=launch.detach,
         boot_timeout=launch.boot_timeout,
@@ -387,6 +410,17 @@ def cmd_stop(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     return vm.stop(paths.vm(name), args.timeout)
 
 
+@railway
+def cmd_presets(_args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
+    cfg = _load(paths).or_bail()
+    names = nixconfig.preset_names(paths)
+    width = max((len(n) for n in names), default=0)
+    for name in names:
+        marker = "  (default for new VMs)" if name == cfg.base_nix_config else ""
+        print(f"{name:<{width}}  {paths.presets_dir / name}{marker}")
+    return Ok(0)
+
+
 def cmd_list(_args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     rows = vm.statuses(paths)
     if not rows:
@@ -416,6 +450,7 @@ COMMANDS = {
     "restart": cmd_restart,
     "ssh": cmd_ssh,
     "stop": cmd_stop,
+    "presets": cmd_presets,
     "list": cmd_list,
     "config": cmd_config,
 }
@@ -430,14 +465,9 @@ def _load(paths: Paths) -> Result[RunConfig, AppError]:
     if loaded.created:
         log.info("first run: wrote %s", paths.config_file)
         log.info("           and %s", paths.host_module(loaded.config.user))
+    if nixconfig.ensure_default_preset(paths).or_bail():
+        log.info("copied the bundled NixOS config to %s", paths.presets_dir / "default")
     return Ok(loaded.config)
-
-
-def _recipe(flag: str | None, cfg: RunConfig, cwd: Path) -> Result[Path, AppError]:
-    recipe = absolute(flag, cwd) if flag else (cfg.recipe or BUNDLED_NIX / "recipe.nix")
-    if not recipe.exists():
-        return fail(f"no such recipe: {recipe}")
-    return Ok(recipe)
 
 
 def prompt_mounts(paths: Paths, cwd: Path, protected: list[Path]) -> Result[list[Mount], AppError]:

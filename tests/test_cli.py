@@ -9,7 +9,7 @@ from amoeboid.paths import Paths
 PATHS = Paths(
     Path("/h"), Path("/h/.config/amoeboid"), Path("/h/.local/share/amoeboid"), Path("/run/amoeboid")
 )
-COMMANDS = ["start", "restart", "ssh", "stop", "list", "config"]
+COMMANDS = ["start", "restart", "ssh", "stop", "presets", "list", "config"]
 
 
 def parse(*argv: str) -> argparse.Namespace:
