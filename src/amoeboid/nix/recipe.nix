@@ -78,6 +78,13 @@
   environment.variables.PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   environment.extraOutputsToInstall = [ "dev" ];
 
+  # nixpkgs' mise compiles node and python from source by default (minutes, and a
+  # silent-looking hang for agents); with nix-ld the official prebuilt ones just work.
+  environment.variables = {
+    MISE_NODE_COMPILE = "0";
+    MISE_PYTHON_COMPILE = "0";
+  };
+
   programs.fish.enable = true;
   programs.fish.interactiveShellInit = "mise activate fish | source";
   users.users.${config.amoeboid.user}.shell = pkgs.fish;
