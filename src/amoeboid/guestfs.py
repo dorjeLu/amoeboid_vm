@@ -7,6 +7,8 @@ launcher to write through it. Every operation here walks from the share root wit
 """
 
 import os
+import shutil
+import stat
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path, PurePosixPath
@@ -45,6 +47,82 @@ def replace_file(root: Path, rel: str, data: bytes, mode: int = 0o644) -> Result
         return Ok(None)
     except OSError as exc:
         return _refused(root, rel, exc)
+
+
+type Tree = dict[str, bytes]
+"""A directory's regular files: POSIX relative path -> contents."""
+
+MAX_TREE_FILES = 256
+MAX_TREE_BYTES = 4 * 1024 * 1024
+
+
+def read_tree(root: Path, rel: str) -> Result[Tree | None, AppError]:
+    """Read every file under `root/rel`; None if it doesn't exist.
+
+    Anything but plain files and directories (symlinks especially: they could point
+    at host secrets) is refused, as are trees too large to be a NixOS recipe.
+    """
+    tree: Tree = {}
+
+    def collect(dir_fd: int, prefix: str) -> None:
+        with os.scandir(dir_fd) as entries:
+            for entry in sorted(entries, key=lambda e: e.name):
+                path = f"{prefix}{entry.name}"
+                if entry.is_dir(follow_symlinks=False):
+                    sub = os.open(entry.name, _DIR_FLAGS, dir_fd=dir_fd)
+                    try:
+                        collect(sub, f"{path}/")
+                    finally:
+                        os.close(sub)
+                elif entry.is_file(follow_symlinks=False):
+                    fd = os.open(
+                        entry.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dir_fd
+                    )
+                    with os.fdopen(fd, "rb") as f:
+                        tree[path] = f.read(MAX_TREE_BYTES + 1)
+                    if len(tree) > MAX_TREE_FILES or sum(map(len, tree.values())) > MAX_TREE_BYTES:
+                        raise _TooBig(f"more than {MAX_TREE_FILES} files or {MAX_TREE_BYTES} bytes")
+                else:
+                    raise _NotPlain(f"{path} is not a regular file or directory")
+
+    try:
+        with _walk(root, PurePosixPath(rel).parts, create=False) as fd:
+            collect(fd, "")
+        return Ok(tree)
+    except FileNotFoundError:
+        return Ok(None)
+    except (_TooBig, _NotPlain) as exc:
+        return fail(f"refusing to read {root / rel}: {exc}")
+    except OSError as exc:
+        return _refused(root, rel, exc)
+
+
+def replace_tree(root: Path, rel: str, tree: Tree) -> Result[None, AppError]:
+    """Make `root/rel` contain exactly `tree`, deleting whatever was there."""
+    parts = PurePosixPath(rel).parts
+    try:
+        with _walk(root, parts[:-1]) as parent, suppress(FileNotFoundError):
+            if stat.S_ISDIR(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False).st_mode):
+                shutil.rmtree(parts[-1], dir_fd=parent)  # symlink-attack safe on Linux
+            else:
+                os.unlink(parts[-1], dir_fd=parent)
+    except OSError as exc:
+        return _refused(root, rel, exc)
+    for path, data in tree.items():
+        match replace_file(root, f"{rel}/{path}", data):
+            case Err() as err:
+                return err
+            case Ok():
+                pass
+    return ensure_dir(root, rel)
+
+
+class _TooBig(Exception):
+    pass
+
+
+class _NotPlain(Exception):
+    pass
 
 
 def remove_file(root: Path, rel: str) -> Result[None, AppError]:

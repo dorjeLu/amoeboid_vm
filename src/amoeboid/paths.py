@@ -46,6 +46,11 @@ class VmPaths:
         return self.state / "guest"
 
     @property
+    def last_mounts(self) -> Path:
+        """What the last start shared; outside the guest's reach, unlike guest/mounts."""
+        return self.state / "mounts"
+
+    @property
     def ssh_dir(self) -> Path:
         return self.state / "ssh"
 

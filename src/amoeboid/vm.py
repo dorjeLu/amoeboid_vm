@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
-from amoeboid import guestfs, plan, procs, qmp, ssh
+from amoeboid import guestfs, plan, procs, qmp, recipe, ssh
 from amoeboid.config import RunConfig
 from amoeboid.errors import AppError, because, fail
 from amoeboid.mounts import Mode, Mount
@@ -34,6 +34,9 @@ class StartRequest:
     config: RunConfig
     host_module: Path
     recipe: Path
+    """Seeds a new VM's recipe; see `recipe.resolve`."""
+    reseed_recipe: bool
+    """The recipe was given explicitly: replace the VM's own copy with it."""
     mounts: tuple[Mount, ...]
     detach: bool
     boot_timeout: float
@@ -48,11 +51,14 @@ def start(req: StartRequest) -> Result[int, AppError]:
     preflight().or_bail()
     procs.sweep(vm).or_bail()
     prepare_dirs(vm).or_bail()
-    build(vm, req.recipe, req.host_module).or_bail()
+    snapshot = recipe.resolve(vm, req.recipe, req.reseed_recipe).or_bail()
+    recipe.publish_reference(vm, req.host_module).or_bail()
+    build(vm, snapshot, req.host_module).or_bail()
     ssh.ensure_host_key(vm).or_bail()
     port = (Ok(req.config.ssh.port) if req.config.ssh.port else ssh.free_port()).or_bail()
     write_guest_state(req, port).or_bail()
     write_runtime_state(vm, req.mounts, port).or_bail()
+    remember_mounts(vm, req.mounts).or_bail()
 
     with ExitStack() as cleanup:
         cleanup.callback(procs.clear_runtime, vm)
@@ -316,7 +322,7 @@ def status(vm: VmPaths) -> Status:
             port = int(vm.ssh_port.read_text().strip())
         except OSError, ValueError:
             port = None
-    return Status(vm.name, running, port, _last_mounts(vm))
+    return Status(vm.name, running, port, last_mounts(vm))
 
 
 def statuses(paths: Paths) -> list[Status]:
@@ -326,9 +332,18 @@ def statuses(paths: Paths) -> list[Status]:
     return [status(paths.vm(n)) for n in names]
 
 
-def _last_mounts(vm: VmPaths) -> tuple[Mount, ...]:
+def remember_mounts(vm: VmPaths, mounts: Sequence[Mount]) -> Result[None, AppError]:
+    """Record the shares host-side; guest/mounts can't be trusted for `restart`/`list`."""
+
+    def write() -> None:
+        vm.last_mounts.write_text(plan.mounts_table(mounts))
+
+    return attempt(write, because(f"can't write {vm.last_mounts}"))
+
+
+def last_mounts(vm: VmPaths) -> tuple[Mount, ...]:
     try:
-        lines = (vm.guest / "mounts").read_text().splitlines()
+        lines = vm.last_mounts.read_text().splitlines()
     except OSError:
         return ()
     out: list[Mount] = []

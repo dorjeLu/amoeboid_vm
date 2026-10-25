@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn, TypedDict
 
@@ -112,7 +113,13 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             "\n"
             "By default the VM's serial console takes over this terminal until the guest\n"
             "powers off. With --detach, the boot log is shown until sshd answers, then\n"
-            "amoeboid exits and the VM keeps running in the background."
+            "amoeboid exits and the VM keeps running in the background.\n"
+            "\n"
+            "Each VM keeps its recipe in its own home (~/amoeboid/recipe inside it,\n"
+            "<data dir>/NAME/guest/home/amoeboid/recipe here), editable from both sides.\n"
+            "Every start builds what is there; inside the VM, packages can only be\n"
+            "searched (nixpkgs-search), not installed. Rebooting from inside the VM just\n"
+            "shuts it down: changes take effect on `amoeboid restart` (or start)."
         ),
         epilog=(
             "mounts:\n"
@@ -139,8 +146,9 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     start.add_argument(
         "--recipe",
         metavar="PATH",
-        help="NixOS module (file, or directory with default.nix) for this start; "
-        "default: `recipe` from the config, else the bundled recipe",
+        help="NixOS module (file, or directory with default.nix) to replace this VM's "
+        "recipe with, including any edits made to it; a new VM otherwise starts from "
+        "`recipe` in the config, else the bundled recipe",
     )
     start.add_argument(
         "--save-mounts",
@@ -197,6 +205,34 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         help="how long the guest gets to power off (default: 60)",
     )
 
+    restart = sub(
+        "restart",
+        "stop a VM and start it again, rebuilt from its recipe",
+        description=(
+            "Stop the VM (as `stop` does), then start it detached, rebuilt from its\n"
+            "current recipe, e.g. after it added packages to ~/amoeboid/recipe. Without\n"
+            "MOUNTs it shares what it shared last time (as recorded on the host; nothing\n"
+            "the VM writes can change that)."
+        ),
+        epilog="examples:\n  amoeboid restart\n  amoeboid restart --name scratch ~/dev/other",
+    )
+    _name_option(restart)
+    restart.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        metavar="SECONDS",
+        help="how long the guest gets to power off (default: 60)",
+    )
+    restart.add_argument(
+        "--boot-timeout",
+        type=float,
+        default=180.0,
+        metavar="SECONDS",
+        help="how long to wait for sshd after booting (default: 180)",
+    )
+    restart.add_argument("mounts", nargs="*", metavar="MOUNT", help="replaces last run's shares")
+
     sub("list", "show VMs, whether they run, and what they share", description="List known VMs.")
 
     cfg = sub(
@@ -241,40 +277,76 @@ def _locations(paths: Paths | None) -> str:
 # -- commands ---------------------------------------------------------------------------
 
 
-@railway
+@dataclass(frozen=True, slots=True)
+class Launch:
+    name: str
+    mounts: list[str]
+    recipe: str | None
+    save_mounts: bool
+    detach: bool
+    boot_timeout: float
+    previous: tuple[Mount, ...] = ()
+    """Mounts of the last run, preferred over default-mounts (for `restart`)."""
+
+
 def cmd_start(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
+    launch = Launch(
+        args.name, args.mounts, args.recipe, args.save_mounts, args.detach, args.boot_timeout
+    )
+    return _launch(launch, paths)
+
+
+@railway
+def cmd_restart(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     name = vm_name(args.name).or_bail()
+    target = paths.vm(name)
+    vm.stop(target, args.timeout).or_bail()
+    launch = Launch(
+        name,
+        args.mounts,
+        recipe=None,
+        save_mounts=False,
+        detach=True,
+        boot_timeout=args.boot_timeout,
+        previous=vm.last_mounts(target),
+    )
+    return _launch(launch, paths)
+
+
+@railway
+def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
+    name = vm_name(launch.name).or_bail()
     cfg = _load(paths).or_bail()
     cwd = Path.cwd()
     protected = [Path("/home") / cfg.user, paths.home]
 
-    specs: list[str] = args.mounts
     prompted = False
-    if specs:
-        mounts = traverse(specs, lambda s: parse_spec(s, cwd)).or_bail()
-    elif cfg.default_mounts:
-        mounts = list(cfg.default_mounts)
+    if launch.mounts:
+        mounts = traverse(launch.mounts, lambda s: parse_spec(s, cwd)).or_bail()
+    elif launch.previous or cfg.default_mounts:
+        mounts = list(launch.previous or cfg.default_mounts)
     else:
         mounts = prompt_mounts(paths, cwd, protected).or_bail()
         prompted = True
     mounts = validate(mounts, protected, Path.is_dir).or_bail()
 
-    if args.save_mounts or (
+    if launch.save_mounts or (
         prompted and _confirm(f"Save these as default-mounts in {paths.config_file}?")
     ):
         config.save(paths, config.with_default_mounts(cfg, mounts)).or_bail()
         log.info("saved default-mounts to %s", paths.config_file)
 
-    recipe = _recipe(args.recipe, cfg, cwd).or_bail()
+    recipe = _recipe(launch.recipe, cfg, cwd).or_bail()
     request = vm.StartRequest(
         vm=paths.vm(name),
         home=paths.home,
         config=cfg,
         host_module=paths.host_module(cfg.user),
         recipe=recipe,
+        reseed_recipe=launch.recipe is not None,
         mounts=tuple(mounts),
-        detach=args.detach,
-        boot_timeout=args.boot_timeout,
+        detach=launch.detach,
+        boot_timeout=launch.boot_timeout,
     )
     return vm.start(request)
 
@@ -330,6 +402,7 @@ def cmd_config(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
 
 COMMANDS = {
     "start": cmd_start,
+    "restart": cmd_restart,
     "ssh": cmd_ssh,
     "stop": cmd_stop,
     "list": cmd_list,

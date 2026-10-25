@@ -102,6 +102,62 @@ in
       '';
     };
 
+    # The guest sees the host's store read-only, so it can't install Nix packages; it can
+    # search the pinned nixpkgs, and ask for packages via ~/amoeboid/recipe, which
+    # takes effect when the VM is restarted from the host.
+    environment.systemPackages = [
+      (pkgs.writeShellApplication {
+        name = "nixpkgs-search";
+        runtimeInputs = [ config.nix.package pkgs.ripgrep pkgs.gnused pkgs.gawk pkgs.coreutils ];
+        text = ''
+          usage() {
+            cat <<'EOF'
+          usage: nixpkgs-search [--limit N] [--refresh] REGEX
+
+          Search the nixpkgs this VM is built from (attribute, name, description;
+          case-insensitive). The first search indexes nixpkgs, which takes about a minute.
+
+          Packages can't be installed from inside the VM. To get one, add pkgs.ATTRIBUTE
+          to environment.systemPackages in ~/amoeboid/recipe/default.nix; it is installed
+          when the VM is next restarted from the host.
+          EOF
+          }
+          limit=50
+          refresh=
+          pattern=
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --help) usage; exit 0 ;;
+              --limit) limit="$2"; shift 2 ;;
+              --refresh) refresh=1; shift ;;
+              --) shift; pattern="$*"; break ;;
+              -*) echo "nixpkgs-search: unknown option $1" >&2; usage >&2; exit 2 ;;
+              *) pattern="$1"; shift ;;
+            esac
+          done
+          [ -n "$pattern" ] || { usage >&2; exit 2; }
+
+          cache="''${XDG_CACHE_HOME:-$HOME/.cache}/amoeboid"
+          index="$cache/nixpkgs-$(basename ${pkgs.path}).tsv"
+          if [ -n "$refresh" ] || [ ! -s "$index" ]; then
+            echo "nixpkgs-search: indexing nixpkgs (once per nixpkgs version)..." >&2
+            mkdir -p "$cache"
+            # A dummy store evaluates straight from the read-only store, writing nothing.
+            nix-env --store dummy:// -f ${pkgs.path} -qaP --description 2>/dev/null \
+              | sed -E 's/ +/\t/; s/ +/\t/' > "$index.tmp"
+            mv "$index.tmp" "$index"
+          fi
+          rg -i -- "$pattern" "$index" | head -n "$limit" \
+            | awk -F'\t' '{ printf "%-36s %-32s %s\n", $1, $2, $3 }'
+        '';
+      })
+    ];
+    users.motd = ''
+      amoeboid VM. Packages: `nixpkgs-search REGEX`; to install one, add it to
+      ~/amoeboid/recipe/default.nix (applied when the VM is restarted from the host).
+      See ~/amoeboid/README.md.
+    '';
+
     # ssh without credentials for now: the client's "none" auth succeeds because the
     # user's password is empty. Keys in ~/.ssh/authorized_keys work too, which is the
     # way to lock this down later (set PermitEmptyPasswords = false).
