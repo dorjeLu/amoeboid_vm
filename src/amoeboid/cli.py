@@ -115,18 +115,18 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             "powers off. With --detach, the boot log is shown until sshd answers, then\n"
             "amoeboid exits and the VM keeps running in the background.\n"
             "\n"
-            "Each VM keeps its recipe in its own home (~/amoeboid/recipe inside it,\n"
-            "<data dir>/NAME/guest/home/amoeboid/recipe here), editable from both sides.\n"
-            "Every start builds what is there; inside the VM, packages can only be\n"
-            "searched (nixpkgs-search), not installed. Rebooting from inside the VM just\n"
-            "shuts it down: changes take effect on `amoeboid restart` (or start)."
+            "Inside the VM, packages can be searched (nixpkgs-search) but not installed.\n"
+            "The VM may request packages in ~/amoeboid/packages.kdl; they are added when\n"
+            "it is next started from here (`amoeboid restart`). Nothing else it writes\n"
+            "affects how it is built or launched; rebooting from inside just shuts it down."
         ),
         epilog=(
             "mounts:\n"
             f"  Each MOUNT is {SPEC_HELP}.\n"
             "  Relative paths are resolved against the current directory. Without any\n"
-            "  MOUNT, `default-mounts` from the config file is used; if that is empty too,\n"
-            "  amoeboid asks for them (and offers to save them as the default).\n"
+            "  MOUNT, the VM gets what it shared last time; a new VM gets `default-mounts`\n"
+            "  from the config file, and if that is empty too, amoeboid asks (and offers\n"
+            "  to save the answer as the default).\n"
             "  Refused: a directory given twice, and /, /home or the home directory itself,\n"
             "  which would hide the VM's own home. Nested shares are fine.\n"
             "\n"
@@ -146,9 +146,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     start.add_argument(
         "--recipe",
         metavar="PATH",
-        help="NixOS module (file, or directory with default.nix) to replace this VM's "
-        "recipe with, including any edits made to it; a new VM otherwise starts from "
-        "`recipe` in the config, else the bundled recipe",
+        help="NixOS module (file, or directory with default.nix) for this start; "
+        "default: `recipe` from the config, else the bundled recipe",
     )
     start.add_argument(
         "--save-mounts",
@@ -209,8 +208,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         "restart",
         "stop a VM and start it again, rebuilt from its recipe",
         description=(
-            "Stop the VM (as `stop` does), then start it detached, rebuilt from its\n"
-            "current recipe, e.g. after it added packages to ~/amoeboid/recipe. Without\n"
+            "Stop the VM (as `stop` does), then start it detached and rebuilt, e.g. after\n"
+            "it requested packages in ~/amoeboid/packages.kdl. Without\n"
             "MOUNTs it shares what it shared last time (as recorded on the host; nothing\n"
             "the VM writes can change that)."
         ),
@@ -230,6 +229,11 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         default=180.0,
         metavar="SECONDS",
         help="how long to wait for sshd after booting (default: 180)",
+    )
+    restart.add_argument(
+        "--recipe",
+        metavar="PATH",
+        help="NixOS module for this start; default: `recipe` from the config, else bundled",
     )
     restart.add_argument("mounts", nargs="*", metavar="MOUNT", help="replaces last run's shares")
 
@@ -286,12 +290,20 @@ class Launch:
     detach: bool
     boot_timeout: float
     previous: tuple[Mount, ...] = ()
-    """Mounts of the last run, preferred over default-mounts (for `restart`)."""
+    """Mounts of the VM's last run (recorded host-side), preferred over default-mounts."""
 
 
+@railway
 def cmd_start(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
+    name = vm_name(args.name).or_bail()
     launch = Launch(
-        args.name, args.mounts, args.recipe, args.save_mounts, args.detach, args.boot_timeout
+        name,
+        args.mounts,
+        args.recipe,
+        args.save_mounts,
+        args.detach,
+        args.boot_timeout,
+        previous=vm.last_mounts(paths.vm(name)),
     )
     return _launch(launch, paths)
 
@@ -304,7 +316,7 @@ def cmd_restart(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]
     launch = Launch(
         name,
         args.mounts,
-        recipe=None,
+        recipe=args.recipe,
         save_mounts=False,
         detach=True,
         boot_timeout=args.boot_timeout,
@@ -343,7 +355,6 @@ def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
         config=cfg,
         host_module=paths.host_module(cfg.user),
         recipe=recipe,
-        reseed_recipe=launch.recipe is not None,
         mounts=tuple(mounts),
         detach=launch.detach,
         boot_timeout=launch.boot_timeout,

@@ -1,5 +1,6 @@
 """Pure construction of everything the launcher writes or runs; no effects here."""
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,9 @@ class Share:
     mode: Mode
 
 
-def nix_build_argv(flake: Path, recipe: Path, host_module: Path, out_link: Path) -> list[str]:
+def nix_build_argv(
+    flake: Path, recipe: Path, host_module: Path, packages: Path, out_link: Path
+) -> list[str]:
     return [
         "nix",
         "--extra-experimental-features",
@@ -33,6 +36,9 @@ def nix_build_argv(flake: Path, recipe: Path, host_module: Path, out_link: Path)
         "--override-input",
         "host",
         f"path:{host_module}",
+        "--override-input",
+        "guestPackages",
+        f"path:{packages}",
         "--no-write-lock-file",
         "--out-link",
         str(out_link),
@@ -124,6 +130,33 @@ def ssh_argv(
         "StrictHostKeyChecking=yes",
         "-o",
         "LogLevel=ERROR",
+        # Whatever ~/.ssh/config says: nothing of the host's reaches the VM through ssh.
+        "-o",
+        "ForwardAgent=no",
+        "-o",
+        "ForwardX11=no",
+        "-o",
+        "GSSAPIDelegateCredentials=no",
+        "-o",
+        "PermitLocalCommand=no",
         f"{user}@127.0.0.1",
         *command,
     ]
+
+
+# Escape sequences a guest could use against the host terminal (OSC 52 clipboard writes,
+# title changes, device queries, ...). Colour/style (CSI ... m) is all that is kept.
+_ESCAPES = re.compile(
+    rb"\x1b\[[0-?]*[ -/]*[@-~]"  # CSI
+    rb"|\x1b[\]P^_X][^\x07\x1b]*(?:\x07|\x1b\\)?"  # OSC, DCS, PM, APC, SOS
+    rb"|\x1b[ -/]*[0-~]?"  # other ESC sequences, or a stray ESC
+)
+_CONTROLS = re.compile(rb"[\x00-\x08\x0b-\x1f\x7f]")  # all C0 but \t and \n
+
+
+def printable_console(chunk: bytes) -> bytes:
+    """Guest console output made safe to copy to the host terminal."""
+    kept = _ESCAPES.sub(
+        lambda m: m[0] if m[0].startswith(b"\x1b[") and m[0].endswith(b"m") else b"", chunk
+    )
+    return _CONTROLS.sub(lambda m: m[0] if m[0] == b"\x1b" else b"", kept)

@@ -103,8 +103,8 @@ in
     };
 
     # The guest sees the host's store read-only, so it can't install Nix packages; it can
-    # search the pinned nixpkgs, and ask for packages via ~/amoeboid/recipe, which
-    # takes effect when the VM is restarted from the host.
+    # search the pinned nixpkgs, and ask for packages in ~/amoeboid/packages.kdl, which
+    # the host adds when it next starts the VM.
     environment.systemPackages = [
       (pkgs.writeShellApplication {
         name = "nixpkgs-search";
@@ -117,9 +117,9 @@ in
           Search the nixpkgs this VM is built from (attribute, name, description;
           case-insensitive). The first search indexes nixpkgs, which takes about a minute.
 
-          Packages can't be installed from inside the VM. To get one, add pkgs.ATTRIBUTE
-          to environment.systemPackages in ~/amoeboid/recipe/default.nix; it is installed
-          when the VM is next restarted from the host.
+          Packages can't be installed from inside the VM. To get one, add its attribute
+          name to ~/amoeboid/packages.kdl; it is installed when the VM is next started
+          from the host. See ~/amoeboid/README.md.
           EOF
           }
           limit=50
@@ -153,8 +153,8 @@ in
       })
     ];
     users.motd = ''
-      amoeboid VM. Packages: `nixpkgs-search REGEX`; to install one, add it to
-      ~/amoeboid/recipe/default.nix (applied when the VM is restarted from the host).
+      amoeboid VM. Packages: `nixpkgs-search REGEX`; to get one, add it to
+      ~/amoeboid/packages.kdl (installed when the host next starts this VM).
       See ~/amoeboid/README.md.
     '';
 

@@ -5,9 +5,10 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     microvm.url = "github:microvm-nix/microvm.nix";
     microvm.inputs.nixpkgs.follows = "nixpkgs";
-    # Both are overridden by the launcher (--override-input): `recipe` with the recipe
-    # it was given, `host` with ~/.config/amoeboid/host_<user>.nix. A file is imported
-    # as-is, a directory via its default.nix.
+    # All three are overridden by the launcher (--override-input): `recipe` with the
+    # recipe, `host` with ~/.config/amoeboid/host_<user>.nix, `guestPackages` with the module
+    # it renders from the VM's packages.kdl. A file is imported as-is, a directory via
+    # its default.nix.
     recipe = {
       url = "path:./recipe.nix";
       flake = false;
@@ -16,9 +17,13 @@
       url = "path:./host-default.nix";
       flake = false;
     };
+    guestPackages = {
+      url = "path:./packages-default.nix";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, microvm, recipe, host }:
+  outputs = { self, nixpkgs, microvm, recipe, host, guestPackages }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -31,6 +36,7 @@
           ./base.nix
           "${recipe}"
           "${host}"
+          "${guestPackages}"
         ];
       };
 

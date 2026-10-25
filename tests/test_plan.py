@@ -45,12 +45,15 @@ def test_virtiofsd_maps_guest_ids_onto_the_host_user() -> None:
     assert argv[-1] == "--readonly"
 
 
-def test_nix_build_overrides_recipe_and_host_module() -> None:
-    argv = plan.nix_build_argv(Path("/f"), Path("/r.nix"), Path("/h.nix"), Path("/out"))
+def test_nix_build_overrides_recipe_host_module_and_packages() -> None:
+    argv = plan.nix_build_argv(
+        Path("/f"), Path("/r.nix"), Path("/h.nix"), Path("/p.nix"), Path("/out")
+    )
     assert argv[:4] == ["nix", "--extra-experimental-features", "nix-command flakes", "build"]
     assert "path:/f" in argv
     assert argv[argv.index("recipe") + 1] == "path:/r.nix"
     assert argv[argv.index("host") + 1] == "path:/h.nix"
+    assert argv[argv.index("guestPackages") + 1] == "path:/p.nix"
 
 
 def test_ssh_pins_the_host_key_under_an_alias() -> None:
@@ -60,3 +63,18 @@ def test_ssh_pins_the_host_key_under_an_alias() -> None:
     assert argv[-3:] == ["u@127.0.0.1", "ls", "-la"]
     assert "HostKeyAlias=amoeboid-x" in argv
     assert "StrictHostKeyChecking=yes" in argv
+    for option in ["ForwardAgent=no", "ForwardX11=no", "GSSAPIDelegateCredentials=no"]:
+        assert option in argv
+        assert argv.index(option) < argv.index("u@127.0.0.1")  # before user-supplied args
+
+
+def test_console_output_keeps_colour_but_no_other_control_sequences() -> None:
+    chunk = (
+        b"\x1b[0;32m  OK  \x1b[0m] boot\r\n"
+        b"\x1b]52;c;ZXZpbA==\x07"  # clipboard write
+        b"\x1b]0;title\x1b\\"  # window title
+        b"\x1b[6n\x1b[?1049h"  # cursor report, alternate screen
+        b"\x1bPq696e\x1b\\"  # DCS query
+        b"x\x07y\tz\x1b"
+    )
+    assert plan.printable_console(chunk) == b"\x1b[0;32m  OK  \x1b[0m] boot\nxy\tz"

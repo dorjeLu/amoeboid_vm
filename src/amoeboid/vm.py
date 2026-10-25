@@ -34,9 +34,6 @@ class StartRequest:
     config: RunConfig
     host_module: Path
     recipe: Path
-    """Seeds a new VM's recipe; see `recipe.resolve`."""
-    reseed_recipe: bool
-    """The recipe was given explicitly: replace the VM's own copy with it."""
     mounts: tuple[Mount, ...]
     detach: bool
     boot_timeout: float
@@ -51,9 +48,9 @@ def start(req: StartRequest) -> Result[int, AppError]:
     preflight().or_bail()
     procs.sweep(vm).or_bail()
     prepare_dirs(vm).or_bail()
-    snapshot = recipe.resolve(vm, req.recipe, req.reseed_recipe).or_bail()
-    recipe.publish_reference(vm, req.host_module).or_bail()
-    build(vm, snapshot, req.host_module).or_bail()
+    packages = recipe.prepare_packages(vm).or_bail()
+    recipe.publish_reference(vm, req.recipe, req.host_module).or_bail()
+    build(vm, req.recipe, req.host_module, packages).or_bail()
     ssh.ensure_host_key(vm).or_bail()
     port = (Ok(req.config.ssh.port) if req.config.ssh.port else ssh.free_port()).or_bail()
     write_guest_state(req, port).or_bail()
@@ -98,9 +95,9 @@ def prepare_dirs(vm: VmPaths) -> Result[None, AppError]:
     return guestfs.ensure_dir(vm.guest, "home")
 
 
-def build(vm: VmPaths, recipe: Path, host_module: Path) -> Result[None, AppError]:
+def build(vm: VmPaths, recipe: Path, host_module: Path, packages: Path) -> Result[None, AppError]:
     log.info("building %s ...", recipe)
-    argv = plan.nix_build_argv(BUNDLED_NIX, recipe, host_module, vm.build_link)
+    argv = plan.nix_build_argv(BUNDLED_NIX, recipe, host_module, packages, vm.build_link)
     return run_checked(argv, "nix build failed (output above)")
 
 
@@ -260,7 +257,10 @@ def _name_flag(vm: VmPaths) -> str:
 
 
 class _Tail:
-    """Copies new console output to stderr while waiting for a detached boot."""
+    """Copies new console output to stderr while waiting for a detached boot.
+
+    The output is the guest's, so terminal control sequences are stripped first.
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -274,7 +274,7 @@ class _Tail:
         except OSError:
             return
         self._offset += len(chunk)
-        sys.stderr.buffer.write(chunk)
+        sys.stderr.buffer.write(plan.printable_console(chunk))
         sys.stderr.flush()
 
 

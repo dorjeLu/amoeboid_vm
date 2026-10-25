@@ -52,49 +52,25 @@ def replace_file(root: Path, rel: str, data: bytes, mode: int = 0o644) -> Result
 type Tree = dict[str, bytes]
 """A directory's regular files: POSIX relative path -> contents."""
 
-MAX_TREE_FILES = 256
-MAX_TREE_BYTES = 4 * 1024 * 1024
 
-
-def read_tree(root: Path, rel: str) -> Result[Tree | None, AppError]:
-    """Read every file under `root/rel`; None if it doesn't exist.
-
-    Anything but plain files and directories (symlinks especially: they could point
-    at host secrets) is refused, as are trees too large to be a NixOS recipe.
-    """
-    tree: Tree = {}
-
-    def collect(dir_fd: int, prefix: str) -> None:
-        with os.scandir(dir_fd) as entries:
-            for entry in sorted(entries, key=lambda e: e.name):
-                path = f"{prefix}{entry.name}"
-                if entry.is_dir(follow_symlinks=False):
-                    sub = os.open(entry.name, _DIR_FLAGS, dir_fd=dir_fd)
-                    try:
-                        collect(sub, f"{path}/")
-                    finally:
-                        os.close(sub)
-                elif entry.is_file(follow_symlinks=False):
-                    fd = os.open(
-                        entry.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dir_fd
-                    )
-                    with os.fdopen(fd, "rb") as f:
-                        tree[path] = f.read(MAX_TREE_BYTES + 1)
-                    if len(tree) > MAX_TREE_FILES or sum(map(len, tree.values())) > MAX_TREE_BYTES:
-                        raise _TooBig(f"more than {MAX_TREE_FILES} files or {MAX_TREE_BYTES} bytes")
-                else:
-                    raise _NotPlain(f"{path} is not a regular file or directory")
-
+def read_file(root: Path, rel: str, limit: int) -> Result[bytes | None, AppError]:
+    """Read `root/rel` if it is a regular file (never through a symlink); None if absent."""
+    parts = PurePosixPath(rel).parts
     try:
-        with _walk(root, PurePosixPath(rel).parts, create=False) as fd:
-            collect(fd, "")
-        return Ok(tree)
+        with _walk(root, parts[:-1], create=False) as dir_fd:
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+            fd = os.open(parts[-1], flags, dir_fd=dir_fd)
+            with os.fdopen(fd, "rb") as f:
+                if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                    return fail(f"refusing to read {root / rel}: not a regular file")
+                data = f.read(limit + 1)
     except FileNotFoundError:
         return Ok(None)
-    except (_TooBig, _NotPlain) as exc:
-        return fail(f"refusing to read {root / rel}: {exc}")
     except OSError as exc:
         return _refused(root, rel, exc)
+    if len(data) > limit:
+        return fail(f"refusing to read {root / rel}: larger than {limit} bytes")
+    return Ok(data)
 
 
 def replace_tree(root: Path, rel: str, tree: Tree) -> Result[None, AppError]:
@@ -115,14 +91,6 @@ def replace_tree(root: Path, rel: str, tree: Tree) -> Result[None, AppError]:
             case Ok():
                 pass
     return ensure_dir(root, rel)
-
-
-class _TooBig(Exception):
-    pass
-
-
-class _NotPlain(Exception):
-    pass
 
 
 def remove_file(root: Path, rel: str) -> Result[None, AppError]:
