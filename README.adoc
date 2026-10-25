@@ -1,0 +1,368 @@
+= amoeboid
+:toc: left
+:toclevels: 2
+:icons: font
+:source-highlighter: rouge
+
+NixOS microVMs for letting agents loose on host directories.
+
+amoeboid boots a NixOS guest under qemu, described by a _recipe_ (a plain NixOS module), with internet access, ssh on a loopback port, and a chosen set of host directories shared into it at the same paths, each read-write or read-only.
+Each VM has a name and a persistent home directory on the host, so you can stop it, restart it with different directories, and pick up where you left off.
+
+== Quick start
+
+[source,fish]
+----
+mise run install            # or: uv tool install --editable .
+
+amoeboid start ~/dev/app    # console on this terminal; leave with `poweroff`
+
+# or in the background, then ssh in from anywhere
+amoeboid start --detach --name proj ~/dev/app ~/dev/libs:ro
+amoeboid ssh --name proj
+amoeboid stop --name proj
+----
+
+The first run writes `~/.config/amoeboid/run_config.kdl` and `host_<you>.nix` next to it, using the account you run amoeboid as.
+Without any directories on the command line, amoeboid uses `default-mounts` from the config; if there are none, it asks for them and offers to save them.
+
+`amoeboid --help` and `amoeboid COMMAND --help` describe everything, including where your files live.
+
+== Requirements
+
+* Linux x86_64 with KVM (`/dev/kvm` accessible to your user).
+* Nix with the daemon running. amoeboid enables the `nix-command` and `flakes` features for its own calls, so no `nix.conf` change is needed.
+* OpenSSH client tools (`ssh`, `ssh-keygen`).
+* Python 3.14 and uv to run amoeboid itself; `mise install` provides both.
+
+Nothing gets installed on the host by amoeboid.
+qemu, virtiofsd and the guest system are built into `/nix/store` and referenced from there.
+
+== Running amoeboid
+
+Three equivalent ways:
+
+`amoeboid`::
+After `mise run install` (`uv tool install --editable --force .`).
+Editable, so it tracks this checkout.
+
+`./amoeboid.py`::
+A stdlib-only shim at the top of the repo; symlink it into `$PATH` if you prefer.
+It re-runs itself through `uv run` against the checkout's venv, creating it as needed.
+
+`uv run amoeboid`::
+From the checkout.
+
+== Commands
+
+----
+amoeboid start   [--name NAME] [--detach] [--recipe PATH] [--save-mounts]
+                 [--boot-timeout SECONDS] [MOUNT ...]
+amoeboid restart [--name NAME] [--timeout SECONDS] [--boot-timeout SECONDS] [MOUNT ...]
+amoeboid ssh     [--name NAME] [-- ARGS ...]
+amoeboid stop    [--name NAME] [--timeout SECONDS]
+amoeboid list
+amoeboid config [--path]
+----
+
+Only long options exist, and they must be spelled out: abbreviations like `--nam` are rejected.
+
+`MOUNT`::
+`PATH[:rw|:ro]`; a host directory shared at the same absolute path inside the VM.
+Relative paths resolve against the current directory.
+`rw` is the default policy.
+
+`--name NAME`::
+Which VM (letters, digits, `-`); defaults to `default`.
+The name selects the persistent state and becomes the guest's hostname.
+Different names can run side by side; one instance per name.
+
+`--detach`::
+Boot in the background, stream the console until the guest's sshd answers, print how to connect, and exit.
+Without it, the serial console takes over the terminal until the guest powers off.
+
+`--save-mounts`::
+Store the given mounts as `default-mounts` in the config file.
+
+`--recipe PATH`::
+Replace the VM's recipe (see <<recipe>>) with this one, discarding edits made to its copy.
+
+`restart`::
+Stop the VM, then start it detached, rebuilt from its current recipe.
+Without `MOUNT`s it reuses the last run's shares, as recorded on the host (outside anything the VM can write).
+
+Each start re-evaluates the recipe.
+When nothing changed this takes a few seconds; a changed recipe rebuilds only what changed.
+
+=== Rules for shared directories
+
+* Each directory may be given once.
+* `/`, `/home`, your home directory, and the guest's home are refused, since they would hide the VM's own home directory.
+* Nested directories are fine (`~/dev ~/dev/vendor:ro`); parents are mounted before children.
+* All problems are reported together.
+
+== Configuration
+
+`~/.config/amoeboid/run_config.kdl` (honouring `$XDG_CONFIG_HOME`), KDL v2:
+
+[source,kdl]
+----
+user "alice"
+uid 1000
+gid 1000
+recipe #null
+(list)default-mounts {
+    - {
+        path "/home/alice/dev"
+        mode "rw"
+    }
+}
+(list)home-files {
+    - ".gitconfig"
+}
+ssh {
+    port 0
+}
+----
+
+`user`, `uid`, `gid`:: The guest account, seeded from the user running amoeboid.
+`recipe`:: NixOS module that new VMs start from; `#null` uses the bundled `src/amoeboid/nix/recipe.nix`. Relative paths resolve against the config directory. Each VM then keeps its own copy (see <<recipe>>).
+`default-mounts`:: Shared when `start` gets no `MOUNT`.
+`home-files`:: Files under `$HOME` copied into the VM's home on every start (seeded with your git config if you have one). The host copy wins; edits inside the VM are overwritten on the next start.
+`ssh.port`:: Loopback port forwarded to the guest's sshd; `0` picks a free port on each start.
+
+The file is read once per command and never hot-reloaded.
+amoeboid rewrites it only when it saves a setting itself (first run, `--save-mounts`, saving prompted mounts), atomically and in canonical form; comments other than the header are not kept.
+Unknown keys and malformed values are rejected with every problem listed.
+
+`host_<user>.nix` next to it is rendered once from `src/amoeboid/nix/host.nix.template` and never overwritten.
+It sets `amoeboid.user`/`uid`/`gid` for the guest and is the place for per-machine NixOS settings such as `microvm.vcpu` and `microvm.mem`.
+
+NOTE: A copied `.gitconfig` may reference things that only exist on the host, such as a signing key (`user.signingkey`, `gpg.format = ssh`) or a credential helper. Commits made in the VM fail if signing is required and the key isn't there.
+
+== What you get inside the VM
+
+[cols="1,3"]
+|===
+|User |your user name and uid/gid, in `wheel`, passwordless `sudo`
+|Shell |fish, with `mise activate` loaded
+|Home |`/home/<user>`, persistent (see <<state>>)
+|Shared dirs |at their host paths, `rw` or `ro`
+|Network |outbound internet via qemu user-mode networking
+|ssh |`amoeboid ssh`; port forwarded on `127.0.0.1` only, host key pinned per VM
+|Package search |`nixpkgs-search REGEX` over the pinned nixpkgs; no installs (see <<recipe>>)
+|Packages |opencode; mise, rustup, gcc, make, pkg-config, openssl, python3, nodejs; ripgrep, fd, jq, yq, GNU grep/sed/awk/find/diff/patch, tree, file, less, which, bc; git, gh, curl, wget, openssh, rsync, iproute2, ping, dig, netcat; tar, gzip, bzip2, xz, zstd, zip, unzip; procps, psmisc, htop, lsof, strace; vim, nano, tmux
+|Nix store |the host's `/nix/store`, read-only
+|Root filesystem |tmpfs: everything outside home and the shares is reset on every boot
+|===
+
+=== ssh
+
+The guest's sshd accepts the guest user without credentials: its password is empty, and the client's initial "none" authentication succeeds.
+The port is bound to `127.0.0.1`, so only processes on the host can reach it, but that includes every local user on a shared machine.
+
+The guest's host key is generated once per VM on the host, kept outside the guest-writable share, and pinned in that VM's `known_hosts` under the alias `amoeboid-NAME`, so there are no first-connection prompts and no warnings when the port changes.
+
+To require keys instead, put a public key in the guest's `~/.ssh/authorized_keys` (persistent) and set `services.openssh.settings.PermitEmptyPasswords = false;` in your recipe or host module.
+
+[[recipe]]
+== The VM's recipe, and installing packages
+
+Each VM keeps its recipe in its own home: `~/amoeboid/recipe/` inside the VM, which is `~/.local/share/amoeboid/NAME/guest/home/amoeboid/recipe/` on the host.
+It is seeded from the configured recipe on the VM's first start (a single file becomes `default.nix`), and both the VM and you can edit it.
+Next to it, `~/amoeboid/reference/` holds read-only-by-convention copies of the flake, `base.nix` and your host module, refreshed on every start, and `~/amoeboid/README.md` explains all this to whatever runs inside.
+
+The VM cannot install anything through Nix: its `/nix/store` is the host's, shared read-only, even to root.
+It can search the exact nixpkgs it is built from with `nixpkgs-search REGEX`; the first search indexes nixpkgs (about a minute, cached in `~/.cache/amoeboid`), using a read-only evaluation that writes nothing to the store.
+To get a package, the VM adds it to `~/amoeboid/recipe/default.nix`, and it is installed when the VM is next started from the host (`amoeboid restart`).
+Rebooting from inside the VM only shuts it down (qemu runs with `-no-reboot`), so the VM can't apply its own changes.
+
+Every start builds whatever the recipe directory holds at that moment.
+It is read without following symlinks and snapshotted to `NAME/recipe/` before building, so a symlink planted in the VM can't pull host files into the world-readable Nix store.
+
+WARNING: The recipe is evaluated into the qemu runner that runs on the host as you. A recipe can set `microvm.qemu.extraArgs`, add `microvm.shares`, or overlay nixpkgs, and so gain access to anything your user can reach. Glance at `~/amoeboid/recipe` (or its `git diff`, if you keep it in git) before restarting a VM whose agent edited it.
+
+[[state]]
+== Persistent state
+
+Per VM name, under `~/.local/share/amoeboid/` (honouring `$XDG_DATA_HOME`):
+
+----
+NAME/
+├── vm -> /nix/store/...-amoeboid-vm   built runner + virtiofsd (also a GC root)
+├── recipe/                            snapshot of the recipe the last start built
+├── mounts                             what the last start shared (used by `restart`)
+├── console.log                        console of the last --detach boot
+├── ssh/
+│   ├── ssh_host_ed25519_key(.pub)     the guest's host key
+│   └── known_hosts                    the pin used by `amoeboid ssh`
+└── guest/                             shared into the VM at /mnt/amoeboid
+    ├── home/                          the VM's /home/<user>
+    │   └── amoeboid/                  recipe/, reference/, README.md (see above)
+    ├── mounts                         dirs to mount this boot (written by the launcher)
+    ├── hostname
+    ├── ssh_host_ed25519_key           copied in on every start
+    └── term                           terminal size at launch (foreground only)
+----
+
+`guest/home` is an ordinary directory owned by you, so you can browse and edit it from the host.
+It keeps everything that lives in the guest's home across restarts: rustup toolchains and the cargo registry, mise installs, opencode sessions and credentials, shell history and dotfiles.
+
+To reset a VM, stop it and delete `~/.local/share/amoeboid/NAME`.
+
+Runtime files (vhost-user sockets, the QMP socket, pid files, the extra qemu arguments, the ssh port) live in `$XDG_RUNTIME_DIR/amoeboid/NAME`, a tmpfs (falling back to `$TMPDIR/amoeboid-<uid>`).
+They are cleaned up on exit.
+If a launcher dies without cleaning up, the next start of that VM kills any helper processes it left behind, with a warning, and refuses to start while that VM's qemu is still running.
+
+== Ownership and permissions
+
+Every share is served by a `virtiofsd` running as your user, inside a user namespace that maps your uid/gid to the guest user's.
+As a result:
+
+* Host files owned by you appear in the VM as owned by the guest user.
+* Anything the VM creates, even as root, is owned by you on the host.
+* The guest cannot create files owned by other users or change ownership to them.
+
+Read-only shares are enforced by `virtiofsd --readonly` on the host.
+A guest that remounts the share read-write (which a root agent could do) still cannot write to it.
+
+The launcher writes into `guest/` on every start, and the guest can write anything there.
+So the launcher never follows symlinks under `guest/`: it walks each path with `O_NOFOLLOW` directory handles and replaces files rather than writing into existing ones.
+That way a planted symlink can't redirect a write (`home/.gitconfig` -> `~/.ssh/authorized_keys`, say) onto the host.
+
+== Writing recipes
+
+A recipe is a normal NixOS module that is merged with `base.nix` and your host module.
+Start from `src/amoeboid/nix/recipe.nix`, copy it, and point `recipe` in the config (or `--recipe`) at the copy:
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+
+{
+  microvm.vcpu = 4;
+  microvm.mem = 4096; # MiB; avoid exactly 2048, qemu hangs
+
+  environment.systemPackages = with pkgs; [
+    opencode
+    nodejs
+    git
+    ripgrep
+  ];
+
+  programs.nix-ld.enable = true;
+  users.users.${config.amoeboid.user}.shell = pkgs.fish;
+  programs.fish.enable = true;
+}
+----
+
+Notes:
+
+* Packages come from the nixpkgs pinned in `src/amoeboid/nix/flake.lock`.
+* `programs.nix-ld.enable` lets prebuilt Linux binaries run, which mise and many npm/pip packages need.
+* Refer to the guest user as `config.amoeboid.user`, not by name.
+* A single-file recipe is copied into the store on its own, so it cannot `import ./other.nix`.
+Use a directory with `default.nix` for multi-file recipes.
+* Avoid overriding `microvm.shares`, `microvm.interfaces` or `microvm.socket` unless you know what the launcher expects (see <<internals>>).
+
+=== Rust
+
+`rustup` is installed rather than a fixed `rustc`.
+On first use, pick a toolchain:
+
+[source,fish]
+----
+rustup default stable
+----
+
+Projects with a `rust-toolchain.toml` get their toolchain automatically.
+The nixpkgs `rustup` patches downloaded toolchains so they run on NixOS.
+
+Build output (`target/`) stays in the project directory on the share.
+If you also build the same project on the host with a different compiler version, the two will keep invalidating each other's artifacts; pin the toolchain with `rust-toolchain.toml` to avoid that.
+
+=== Agents
+
+Log opencode in once per VM name; the credentials persist in the VM's home:
+
+[source,fish]
+----
+opencode auth login
+----
+
+== Updating
+
+Update nixpkgs and microvm.nix:
+
+[source,fish]
+----
+cd src/amoeboid/nix
+nix flake update nixpkgs microvm
+----
+
+The next start rebuilds the VM.
+Old builds stay in the store until their `vm` link is replaced and you run `nix-collect-garbage`.
+
+[[internals]]
+== How it works
+
+. The launcher snapshots the VM's recipe from its home and builds `path:src/amoeboid/nix` (the flake ships inside the Python package), overriding its `recipe` input with the snapshot and its `host` input with `host_<user>.nix`.
+The build is pure: the shared directories and the ssh port are not part of it.
+The result links the microvm.nix qemu runner and virtiofsd.
+. It writes `guest/mounts` with one line per directory, `<tag> <rw|ro> <path>` (tab separated, parents first), the hostname, and the guest's ssh host key.
+It also writes a file of extra qemu arguments: the user-mode network device with the `127.0.0.1:PORT -> :22` forward, and one `vhost-user-fs-pci` device per directory (tags `d1`, `d2`, ...).
+. It starts one virtiofsd per share: the host store (`ro-store`), the state dir (`amoeboid`), and each directory.
+Each process is recorded in a pid file and registered for cleanup as soon as it starts.
+. It runs `microvm-run` from the runtime dir.
+microvm.nix's `extraArgsScript` reads the extra-arguments file, so the devices are attached without rebuilding.
+. In the guest, the `amoeboid-mounts` service sets the hostname, installs the host key, and mounts each tag from `mounts` at its path before the console login and sshd start.
+. `amoeboid stop` sends `system_powerdown` over the QMP socket, waits for qemu to exit, then stops the helpers.
+
+=== Code layout
+
+[cols="1,3"]
+|===
+|`result.py` |`Ok`/`Err`, combinators, and `@railway` with `.or_bail()` (Rust's `?`)
+|`kdl_serde.py` |`KdlSerde`: canonical, bijective `Value` <-> KDL v2
+|`config.py` |`RunConfig` <-> KDL, first-run creation, atomic saves
+|`recipe.py` |the VM's own recipe: seeding, symlink-safe snapshots, reference copies
+|`paths.py`, `mounts.py`, `plan.py` |pure: locations, mount rules, command lines and generated files
+|`guestfs.py`, `procs.py`, `ssh.py`, `qmp.py` |effects: safe guest writes, process tracking, ssh identity, qemu control
+|`vm.py` |orchestration of start/stop/status
+|`cli.py` |argparse front end
+|===
+
+Fallible steps return `Result` values instead of raising; exceptions from the OS are converted at the edges with `attempt`.
+
+Development tasks run through mise: `mise run test`, `mise run test-thorough` (5000 property-test examples each), `mise run lint` (ruff and basedpyright strict), `mise run fmt`.
+
+== Troubleshooting
+
+`VM 'NAME' is already running`::
+Connect with `amoeboid ssh --name NAME` or stop it with `amoeboid stop --name NAME`.
+
+The console is the wrong size::
+The size is taken from your terminal at launch and not updated on resize.
+Fix it inside the VM with `stty rows R cols C`, or use `amoeboid ssh`, which tracks resizes.
+
+`the recipe of 'NAME' has no default.nix`::
+The VM's copy lost its entry point. Restore `~/.local/share/amoeboid/NAME/guest/home/amoeboid/recipe/default.nix`, or start with `--recipe PATH`.
+
+`sshd didn't come up within ...`::
+See `~/.local/share/amoeboid/NAME/console.log`; raise `--boot-timeout` for slow first boots.
+
+The VM hangs and won't power off::
+`amoeboid stop` kills qemu after `--timeout`.
+
+`can't write .../guest/...: ... symlink`::
+Something inside the VM replaced a directory in its state share with a symlink.
+Inspect `~/.local/share/amoeboid/NAME/guest` and remove it.
+
+== Limitations
+
+* Directories are chosen at start; there is no hot-plugging into a running VM.
+* No RAM snapshots: stopping a VM is a shutdown, and resuming is a reboot from its persistent home.
+* ssh needs no credentials, so any local process on the host can log in to a running VM.
+* Only Nix installs are blocked. The VM's home is persistent and writable, so user-level installs persist there: `pip install --user`, `npm install -g` with a home prefix, `cargo install`, mise and rustup toolchains, or a downloaded binary (which nix-ld helps run).
+* The guest can reach anything the host can reach over the network, including services on the host's loopback (via the user-network gateway, `10.0.2.2`) and the LAN.
+* Shared directories are writable by whatever runs in the VM unless shared `:ro`; an agent in yolo mode can modify or delete anything in a `rw` share.
