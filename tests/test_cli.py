@@ -58,6 +58,10 @@ def test_start_arguments() -> None:
     assert (args.name, args.detach, args.mounts) == ("box", True, ["a", "b:ro"])
 
 
+def test_detached_is_an_alias_for_detach() -> None:
+    assert parse("start", "--detached").detach
+
+
 def test_ssh_passes_everything_after_the_name_through() -> None:
     args = parse("ssh", "--name", "box", "--", "ls", "-la")
     assert args.subcommand == "ssh"

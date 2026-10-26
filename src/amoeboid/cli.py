@@ -150,6 +150,7 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     _name_option(start)
     start.add_argument(
         "--detach",
+        "--detached",
         action="store_true",
         help="boot in the background; return once ssh works (console log: "
         "<data dir>/NAME/console.log)",
