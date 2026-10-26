@@ -7,6 +7,7 @@ A detached start hands its processes over to the VM by dropping the stack instea
 
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -68,7 +69,8 @@ def start(req: StartRequest) -> Result[int, AppError]:
             return run_foreground(vm)
         run_detached(req, port, cleanup).or_bail()
         cleanup.pop_all()  # the VM and its helpers now outlive us
-        log.info("'%s' is up: `amoeboid ssh%s` (127.0.0.1:%d)", vm.name, _name_flag(vm), port)
+        log.info("'%s' is up on 127.0.0.1:%d: `amoeboid ssh%s`, or", vm.name, port, _name_flag(vm))
+        log.info("  %s", ssh_command(req, port))
         return Ok(0)
     raise AssertionError("unreachable")  # pragma: no cover - ExitStack never swallows
 
@@ -250,9 +252,23 @@ def _announce(req: StartRequest, port: int) -> None:
     for m in req.mounts:
         log.info("  sharing %s (%s)", m.path, m.mode)
     flag = _name_flag(vm)
-    log.info("ssh: `amoeboid ssh%s` (127.0.0.1:%d, user %s)", flag, port, req.config.user)
+    log.info("ssh: 127.0.0.1:%d, user %s: `amoeboid ssh%s`, or", port, req.config.user, flag)
+    log.info("  %s", ssh_command(req, port))
     if not req.detach:
         log.info("console attached; leave with `poweroff` (or `amoeboid stop%s`)", flag)
+
+
+def ssh_command(req: StartRequest, port: int) -> str:
+    """What `amoeboid ssh` runs, to paste into a shell: same host key pin and options."""
+    vm = req.vm
+    argv = plan.ssh_argv(
+        user=req.config.user,
+        port=port,
+        alias=ssh.alias(vm),
+        known_hosts=vm.known_hosts,
+        command=[],
+    )
+    return shlex.join(argv)
 
 
 def _name_flag(vm: VmPaths) -> str:
