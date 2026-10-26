@@ -319,24 +319,4 @@ The guest won't power off::
 
 == Development
 
-[source,fish]
-----
-mise run test            # pytest + hypothesis
-mise run test-thorough   # 5000 examples per property
-mise run lint            # ruff + basedpyright (strict)
-mise run fmt
-----
-
-[cols="1,3"]
-|===
-|`result.py` |`Ok`/`Err`, combinators, `@railway` with `.or_bail()` (Rust's `?`)
-|`kdl_serde.py` |`KdlSerde`: canonical, bijective Python value <-> KDL v2
-|`config.py` |`run_config.kdl` <-> `RunConfig`, first-run creation, atomic saves
-|`paths.py`, `mounts.py`, `plan.py` |pure: locations, mount rules, command lines and generated files
-|`nixconfig.py` |presets, per-VM configurations, guest copies
-|`guestfs.py`, `procs.py`, `ssh.py`, `qmp.py` |effects: no-follow guest writes, process tracking, ssh identity, qemu control
-|`vm.py` |start / stop / status orchestration
-|`cli.py` |argparse front end
-|===
-
-Fallible steps return `Result` values rather than raising; OS exceptions are converted at the edges with `attempt`.
+Architecture, invariants, code style and the change checklist are in link:DEVELOPING.adoc[DEVELOPING.adoc].

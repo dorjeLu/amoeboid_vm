@@ -1,0 +1,402 @@
+= amoeboid: developer guide
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+Architecture, invariants and conventions for changing amoeboid.
+Operator-facing behaviour (commands, config keys, file layout, safety model) is specified in `README.adoc`; this document assumes it and covers how the code realises it.
+
+== Gist
+
+amoeboid is a host-side Python launcher (~2,600 lines, one runtime dependency: `ckdl`) for NixOS microVMs built with microvm.nix.
+Per `start` it:
+
+. builds a per-VM Nix flake into a qemu runner plus `virtiofsd` (`nix build`, cached by Nix);
+. writes per-start state the guest reads at boot (mount table, hostname, ssh host key, terminal size) into a host directory shared into the guest;
+. spawns one `virtiofsd` per share and the microvm.nix runner (qemu), tracking each by pid file;
+. either attaches the serial console to the terminal (foreground) or streams the console log until sshd answers and exits (`--detach`).
+
+Everything that varies per start (ports, shares, account) is kept out of the Nix build: the build is a function of the VM's config directory and the rendered guest account only, so restarts with different shares never rebuild.
+
+The guest is untrusted. The design rule that follows from this, and that most of the code exists to uphold: *the host writes into guest-reachable locations without trusting what is there, and never reads anything back from them*.
+
+== Runtime topology
+
+[source,mermaid]
+----
+flowchart LR
+  subgraph host["Host (runs as the invoking user)"]
+    cli["amoeboid (Python)"]
+    nix[("nix build<br/>/nix/store")]
+    subgraph rt["$XDG_RUNTIME_DIR/amoeboid/NAME (tmpfs)"]
+      pids["*.pid, ssh-port,<br/>amoeboid-qemu-args"]
+      socks["ro-store.sock, state.sock,<br/>d1.sock … dN.sock, control.sock"]
+    end
+    vfs1["virtiofsd ro-store<br/>(/nix/store, --readonly)"]
+    vfs2["virtiofsd state<br/>(NAME/guest)"]
+    vfsn["virtiofsd dI<br/>(each MOUNT)"]
+    qemu["qemu (microvm-run)"]
+  end
+  subgraph guest["Guest NixOS (tmpfs root)"]
+    mnt["amoeboid-mounts.service"]
+    sshd["sshd :22"]
+    getty["serial-getty@ttyS0<br/>(autologin)"]
+  end
+  cli -- builds --> nix
+  cli -- spawns, records pid --> vfs1 & vfs2 & vfsn & qemu
+  vfs1 & vfs2 & vfsn -- vhost-user socket --> qemu
+  cli -- QMP system_powerdown --> qemu
+  qemu -- user-mode net<br/>127.0.0.1:PORT → 22 --> sshd
+  qemu -- virtiofs --> mnt
+  qemu -- serial ttyS0 = stdio --> getty
+----
+
+Process facts:
+
+* All helpers run as the invoking user. `virtiofsd` uses `--sandbox=namespace` and maps the guest uid/gid onto the host user's (`plan.virtiofsd_argv`); guest root writes land as the host user.
+* qemu's network is user-mode (slirp). The only inbound path is the ssh forward bound to `127.0.0.1`. Outbound is unrestricted, including the host's loopback via `10.0.2.2`.
+* The runner is `<state>/vm/runner/bin/microvm-run`, launched with cwd = runtime dir; it reads `amoeboid-qemu-args` (word-split, so no spaces inside arguments) and relative socket paths resolve against that cwd.
+* The QMP socket name `control.sock` comes from `microvm.socket` in `base.nix`.
+* microvm.nix runs qemu with `-no-reboot`: a guest reboot terminates qemu.
+
+== Ownership and trust
+
+Every path is either *host-owned* (only amoeboid writes it; may be read) or *guest-writable* (the VM can put anything there, including symlinks to arbitrary host paths; only written via `guestfs`, never read).
+
+[cols="2,1,3"]
+|===
+|Path |Owner |Notes
+
+|`~/.config/amoeboid/run_config.kdl` |host |read once per command; rewritten atomically, whole, canonical
+|`~/.config/amoeboid/nix_presets/*/` |host |`default` copied from the bundled `nix/` once, never overwritten
+|`<data>/NAME/nix/` |host |what is built; copied from a preset on create or `--base-nix-config`
+|`<data>/NAME/host.nix` |host |guest account; rendered every start; the flake's `host` input
+|`<data>/NAME/mounts` |host |last run's shares; source of truth for `restart`/`list`
+|`<data>/NAME/ssh/` |host |guest host key + `known_hosts` pin; key copied into the guest every start
+|`<data>/NAME/vm` |host |build out-link (GC root)
+|`<data>/NAME/console.log` |host, guest-controlled content |filtered through `plan.printable_console` before reaching the terminal
+|`<data>/NAME/guest/**` |*guest* |the state share at `/mnt/amoeboid`: home, `mounts`, `hostname`, `term`, `ssh_host_ed25519_key`, `home/amoeboid/{nix,reference,README.md}`
+|`$XDG_RUNTIME_DIR/amoeboid/NAME/` |host |sockets, pid files; cleared on start (`procs.sweep`) and exit
+|===
+
+Consequences an extension must preserve:
+
+* `guest/mounts` exists for the guest to read at boot. `restart` and `list` use `<data>/NAME/mounts` instead (`vm.remember_mounts`/`vm.last_mounts`, covered by `test_last_mounts_come_from_the_host_side_record_not_the_guest`).
+* The agent's config copy (`~/amoeboid/nix` in the guest) is seeded once and never read back. Adoption is manual (README, "Adopting changes an agent made"), because a config evaluates into a runner that executes on the host as the user.
+* The ssh host key lives in `<data>/NAME/ssh/` and is copied in on every start, so the guest cannot persist a different identity.
+
+=== Configuration flow
+
+[source,mermaid]
+----
+flowchart TD
+  bundled["src/amoeboid/nix/<br/>(bundled)"] -- "first run<br/>ensure_default_preset" --> preset["nix_presets/&lt;preset&gt;/"]
+  preset -- "new VM or --base-nix-config<br/>prepare → replace_dir" --> own["&lt;data&gt;/NAME/nix/"]
+  kdl["run_config.kdl + $HOME"] -- "every start<br/>write_host_module" --> hostnix["&lt;data&gt;/NAME/host.nix"]
+  own -- "nix build path:…<br/>--override-input host" --> build["&lt;data&gt;/NAME/vm → store"]
+  hostnix --> build
+  own -- "new VM / missing<br/>(guestfs.replace_tree)" --> gown["guest: ~/amoeboid/nix/"]
+  own -- "every start" --> gref["guest: ~/amoeboid/reference/"]
+  hostnix --> gown & gref
+  gown -. "never read back" .-x own
+----
+
+Editing the bundled `src/amoeboid/nix/` affects new presets only. Existing presets and per-VM configs keep their copies; say so in the commit message whenever a change to the bundled config matters to existing users.
+
+== Start sequence
+
+`vm.start` in order; each step is a `Result`, the first `Err` aborts and unwinds.
+
+[source,mermaid]
+----
+sequenceDiagram
+  participant C as cli._launch
+  participant V as vm.start
+  participant N as nix
+  participant F as virtiofsd ×N
+  participant Q as qemu
+  participant G as guest
+  C->>C: load config, resolve + validate mounts, resolve base config
+  C->>V: StartRequest
+  V->>V: preflight (nix, ssh-keygen, /dev/kvm)
+  V->>V: procs.sweep (refuse if qemu alive, kill leftovers)
+  V->>V: write host.nix, nixconfig.prepare (copies)
+  V->>N: nix build → <data>/NAME/vm
+  V->>V: ensure host key, pick port
+  V->>V: guest state (guestfs), runtime state, remember mounts
+  V->>F: spawn per share (ExitStack callback)
+  V->>Q: spawn runner
+  Q->>G: boot
+  G->>G: amoeboid-mounts.service (hostname, host key, mounts)
+  alt foreground
+    Q-->>V: exits on guest poweroff
+  else detached
+    V->>G: poll for "SSH-" banner, tail console.log
+    V->>V: cleanup.pop_all() (helpers outlive launcher)
+  end
+----
+
+Resource bracketing: `start` holds an `ExitStack`. `spawn` registers terminate+reap callbacks the moment a process starts, so any `Err`, exception, Ctrl-C, SIGTERM or SIGHUP (`cli._exit_on_signal` raises `SystemExit`) unwinds whatever was started. A detached start transfers ownership to the running VM by `cleanup.pop_all()`; from then on only `stop` (via pid files) reclaims them.
+
+Foreground: qemu owns the terminal in raw mode, so a `KeyboardInterrupt` reaching the launcher came from elsewhere; it is converted into `qmp.powerdown` and the launcher keeps waiting.
+
+Guest-side ends of a session: `poweroff`, logging out of the console (an `ExecStopPost` on `serial-getty@ttyS0` powers off when login exited by itself and the system is not already stopping), ACPI from `amoeboid stop`. sshd sessions never trigger poweroff.
+
+== Module map
+
+[source,mermaid]
+----
+flowchart BT
+  result["result<br/>Ok/Err, @railway"]
+  errors["errors<br/>AppError, fail, because"]
+  kdl["kdl_serde"]
+  paths["paths"]
+  mounts["mounts"]
+  plan["plan"]
+  config["config"]
+  guestfs["guestfs"]
+  procs["procs"]
+  ssh["ssh"]
+  qmp["qmp"]
+  nixconfig["nixconfig"]
+  vm["vm"]
+  cli["cli"]
+  errors --> result
+  kdl --> result
+  paths --> errors
+  mounts --> paths
+  plan --> mounts
+  config --> kdl & mounts & paths
+  guestfs --> errors
+  procs --> paths
+  ssh --> paths
+  qmp --> errors
+  nixconfig --> guestfs & paths
+  vm --> nixconfig & guestfs & plan & procs & qmp & ssh & config
+  cli --> vm & config & nixconfig & plan & ssh & mounts
+----
+
+[cols="1,1,4"]
+|===
+|Module |Layer |Responsibility
+
+|`result` |core |`Ok`/`Err`, `map`/`bind`/`map_err`/`unwrap_or`, `@railway` + `.or_bail()`, `attempt`, `traverse`, `traverse_all`, `ensure`
+|`errors` |core |`AppError(message, hint)`; `fail(...)`; `because(what, hint)` for `attempt`
+|`kdl_serde` |pure |`KdlSerde.dumps`/`loads`: bijection between `Value` trees and canonical KDL v2
+|`paths` |pure |`Paths`/`VmPaths` (every location, derived from `$HOME`/XDG), VM name rules
+|`mounts` |pure |`Mount`, `PATH[:rw\|:ro]` parsing, validation (duplicates, non-dirs, covering the home), parent-first ordering
+|`plan` |pure |argv for nix/virtiofsd/ssh, qemu extra args, mount table, `Share` list, console sanitising
+|`config` |pure + file I/O at the edges |`RunConfig` <-> `Document`, decoders reporting all problems, atomic save
+|`guestfs` |effect |writes into guest-writable dirs: `O_NOFOLLOW` walk from the root, replace-never-write-through
+|`procs` |effect |pid files, `/proc/PID/exe` liveness, SIGTERM→SIGKILL, `sweep`
+|`ssh` |effect |host key generation and pinning, free port, sshd banner probe
+|`qmp` |effect |minimal QMP client: `qmp_capabilities`, `system_powerdown`
+|`nixconfig` |effect |presets, per-VM config copy/rebase, guest copies, `host.nix` rendering, guest README text
+|`vm` |orchestration |`start`/`stop`/`status`/`statuses`, `StartRequest`, process spawning
+|`cli` |front end |argparse tree, `cmd_*` handlers, prompts, logging setup, signal handling, `main`
+|===
+
+Dependencies point downward only: pure modules never import effectful ones, nothing imports `cli`, and `vm` is the only module that combines processes, Nix and guest state.
+
+== Error handling
+
+Fallible operations return `Result[T, AppError]`; nothing inside the rails raises.
+Exceptions are converted at the boundary where they originate, with `attempt`, catching only what is expected (default `OSError`).
+
+[source,python]
+----
+@railway
+def write_host_module(vm: VmPaths, user: str, uid: int, gid: int, home: Path) -> Result[Path, AppError]:
+    target = vm.host_module
+    text = render_host_module(user, uid, gid, check_home(home).or_bail())  # Err → returned
+
+    def write() -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        return target
+
+    return attempt(write, because(f"can't write {target}"))  # OSError → Err(AppError)
+----
+
+Rules:
+
+* `.or_bail()` only inside a `@railway` function; it raises a private `_Bail` that the decorator turns into the return value. One error type per call graph (`AppError`); `railway` does not check it.
+* Short pipelines use combinators (`.map`, `.bind`, `.map_err`); sequences of effects use `@railway` to stay flat.
+* Validation that should report every problem at once collects instead of short-circuiting: `traverse_all` (mounts), tuple-of-results + `match` (config decoding).
+* Inner decoders return `Result[T, str]`; the caller prefixes context (`"uid: …"`, `"item 2: …"`) and wraps in `AppError` once.
+* `cli.main` is the single place errors are printed: `amoeboid: error: <message>` plus `hint: <hint>`; exit status 1.
+* Programming errors (broken invariants) may raise normally; they are not `AppError`s.
+
+Message style: lowercase, no trailing period, state the failed action and the object (`can't write {path}: {strerror}`), hint is an imperative remedy (`stop it with \`amoeboid stop --name x\``). Messages name paths and VM names concretely.
+
+== Configuration file
+
+`run_config.kdl` is a KDL v2 document in a canonical subset: scalar nodes, blocks for dicts, `(list)name { - item }` for lists (`kdl_serde` module docstring has the grammar). `loads(dumps(doc)) == Ok(doc)` and `dumps(loads(text)) == text` for canonical text are property-tested; non-canonical shapes (properties, multiple args, unknown annotations, duplicate keys) are rejected rather than interpreted.
+
+Emission is implemented in `kdl_serde` rather than by ckdl because ckdl's emitter loses `-0.0`, misprints subnormals and leaves keyword-like strings unquoted; floats are emitted in the shortest spelling ckdl reads back exactly.
+
+=== Adding a key
+
+. Field on `RunConfig` (or a nested frozen dataclass like `TimeoutsConfig`) with a default unless the key is mandatory; docstring under the field.
+. `config.to_document`: emit it.
+. `config._KEYS`; a decoder (`_int_in`, `_str`, `_list_of`, `_path(base)` or a new `Decoder[T]`); a slot in the `from_document` tuple and both `match` arms.
+. Nested blocks: their own `_known_keys` check and defaults, as in `_ssh`/`_timeouts`.
+. Extend the Hypothesis strategy `configs` in `tests/test_config.py` so the round-trip properties cover it; add the rendered form to `test_rendered_example`.
+. Document it in `cli.py` (`config` epilog) and `README.adoc` (Configuration file table and example).
+
+Relative paths in the file resolve against the config directory, not the cwd. Existing files without the key must keep loading (optional with default).
+
+== CLI
+
+* Long options only, never abbreviated: every parser gets `PARSER_DEFAULTS` (`add_help=False`, `allow_abbrev=False`, `suggest_on_error=True`) and `_help_option`. Tests enforce it for every subcommand (`test_no_short_options`, `test_no_abbreviated_options`, `test_every_parser_has_long_help`).
+* Help text is written for the operator, preformatted (`RawDescriptionHelpFormatter`): description = what the command does and its side effects; epilog = examples and rules.
+* Flags that override a config value have no argparse default (`None`) and are resolved with `_seconds(flag, configured)`-style helpers, so the config is the single source of the default.
+* Handlers are `cmd_<name>(args, paths) -> Result[int, AppError]`, registered in `COMMANDS`. Handlers resolve input (names, mounts, configs) and delegate to `vm`/`nixconfig`; they do not manage processes.
+* `ssh` replaces the process (`os.execvp`) so the terminal belongs to ssh.
+* Logging: `amoeboid: …` to stderr, `warning:`/`error:` prefixes from WARNING up. stdout is for command output only (`list`, `presets`, `config`).
+
+== Nix side
+
+`src/amoeboid/nix/` is a flake with a fixed contract and two layers:
+
+* `base.nix`: plumbing the launcher depends on (options `amoeboid.{user,uid,gid,home}`, shares, extra-args script, QMP socket, account, home bind mount, `amoeboid-mounts.service`, sshd, console, `nixpkgs-search`). Changes here are coupled to Python.
+* `recipe.nix`: content (packages, services, sizing). Not coupled to Python; users edit it.
+* `flake.nix`: `host` input (overridden with `--override-input host path:<data>/NAME/host.nix`), `packages.<system>.default` = linkFarm with `runner` and `virtiofsd`, for `x86_64-linux` and `aarch64-linux`. The guest has the host's architecture.
+
+=== Python ↔ Nix coupling
+
+Any rename on one side must be mirrored on the other; nothing checks this at build time.
+
+[cols="2,2,2"]
+|===
+|Contract |Python |Nix
+
+|QMP socket `control.sock` |`VmPaths.control_socket` |`microvm.socket`
+|fixed shares `ro-store`/`state`, sockets `ro-store.sock`/`state.sock` |`plan.shares` |`microvm.shares`
+|user shares tag `dN`, socket `dN.sock`, chardev `amoN` |`plan.tag`, `plan.qemu_args` |mounted by tag from `mounts` table
+|extra qemu args file `amoeboid-qemu-args` in runner cwd |`VmPaths.qemu_args` |`microvm.extraArgsScript`
+|state share mount point `/mnt/amoeboid` |`nixconfig._RESERVED_HOMES` |`state` in `base.nix`
+|`mounts` (`tag\tmode\tpath`, parents first) |`plan.mounts_table`, `mounts.validate` ordering |`amoeboid-mounts.service`
+|`hostname`, `ssh_host_ed25519_key`, `term` |`vm.write_guest_state` |`amoeboid-mounts.service`, `loginShellInit`
+|guest home = `<state share>/home`, path = host `$HOME` |`prepare_dirs`, `check_home`, `render_host_module` |`fileSystems.${home}`
+|build outputs `runner/bin/microvm-run`, `virtiofsd/bin/virtiofsd` |`vm.runner`, `vm.start_shares` |`packages.default` linkFarm
+|guest sshd on port 22 |`plan.GUEST_SSH_PORT` (forward target) |`services.openssh` default port
+|===
+
+Guest boot ordering: `amoeboid-mounts.service` runs before `serial-getty@ttyS0`, `sshd` and `sshd-keygen`, so nothing logs in before shares and the pinned host key are in place.
+
+=== Testing Nix changes
+
+There is no automated VM test. Verify Nix changes against a throwaway VM built straight from the checkout, which bypasses presets:
+
+[source,fish]
+----
+uv run amoeboid start --detach --name scratch --base-nix-config src/amoeboid/nix /tmp/some-dir
+uv run amoeboid ssh --name scratch -- systemctl --failed
+uv run amoeboid stop --name scratch
+rm -rf ~/.local/share/amoeboid/scratch
+----
+
+Foreground console behaviour can be driven non-interactively with Python's `pty.fork()`: exec `amoeboid start`, read until the motd appears, write input, `waitpid`.
+
+== Sensitive points
+
+Places where a plausible-looking change breaks a security or correctness property.
+
+Guest-writable writes::
+Only through `guestfs` (`replace_file`, `replace_tree`, `ensure_dir`, `remove_file`). Each opens the share root and walks component by component with `O_DIRECTORY|O_NOFOLLOW`, rejects `..`, unlinks and recreates files with `O_CREAT|O_EXCL|O_NOFOLLOW` instead of opening existing ones, and removes trees with `shutil.rmtree(dir_fd=…)`. A `Path.write_text` anywhere under `vm.guest` is a host-file-overwrite primitive for the guest (e.g. `home/.gitconfig -> ~/.ssh/authorized_keys`).
+
+Reading back::
+Never read files under `vm.guest` to make decisions. Add host-owned records (as `<data>/NAME/mounts`) instead.
+
+Console output::
+Guest bytes shown on the host terminal pass through `plan.printable_console` (keeps SGR colour, drops OSC/DCS/other escapes and C0 controls except `\t`/`\n`). Foreground mode is exempt by design: qemu owns the terminal.
+
+ssh invocation::
+`plan.ssh_argv` pins the key under `HostKeyAlias=amoeboid-NAME` with a per-VM `UserKnownHostsFile` and `StrictHostKeyChecking=yes`, and forces `ForwardAgent=no`, `ForwardX11=no`, `GSSAPIDelegateCredentials=no`, `PermitLocalCommand=no` regardless of `~/.ssh/config`. The pasteable command logged at start is built by the same function.
+
+Process tracking::
+A pid counts as ours only while `/proc/PID/exe` contains the expected program name (`qemu` or `virtiofsd`; the executable, since the runner renames argv[0]). Never signal a pid from a pid file without `procs.alive`. One qemu per VM name: `sweep` refuses while one runs.
+
+Generated Nix::
+`host.nix` interpolates the user name (validated by `config._USER`), integers, and the home path through `_nix_string` (escapes `\`, `"`, `${`). Anything new interpolated into Nix needs the same treatment. `check_home` refuses homes that would collide with system paths or `/mnt/amoeboid`.
+
+Mount validation::
+`validate` refuses `/`, `/home` or anything covering the home (it would hide the guest's home), duplicates (path identity, mode ignored), and non-directories; sorts parents before children because nested shares mount over their parent.
+
+qemu arguments::
+`amoeboid-qemu-args` is word-split by the runner script: no argument may contain whitespace. Paths in it are relative to the runtime dir for that reason.
+
+Read-only shares::
+Enforced by `virtiofsd --readonly` on the host; the guest's `ro` mount option is cosmetic. Do not move enforcement into the guest.
+
+Config writes::
+Whole-file, temp + `rename`, canonical form; comments other than `HEADER` are dropped. Only write when amoeboid itself changes a setting.
+
+Known qemu quirk::
+`microvm.mem = 2048` exactly hangs qemu; documented in `recipe.nix` and README.
+
+== Code style
+
+Python 3.14, strict basedpyright, ruff (`E F W I B UP SIM RUF PL PTH TRY C4`, line length 100). `mise run lint` must be clean; no `# type: ignore`, and `noqa` only with an evident reason (e.g. `PLC0415` in the shim).
+
+Data::
+`@dataclass(frozen=True, slots=True)` for records; no mutable shared state; `StrEnum` for closed string sets (`Mode`). Derived locations are `@property` on `Paths`/`VmPaths`, not string concatenation at call sites.
+
+Types::
+PEP 695 generics and `type` aliases (`type Decoder[T] = Callable[[Value], Result[T, str]]`); full annotations everywhere, tests included. Stubs for untyped deps go in `typings/`.
+
+Control flow::
+Structural `match` over `Ok`/`Err` and over value shapes in preference to `isinstance` chains; early returns; `except A, B:` without parentheses (PEP 758).
+
+Purity::
+Construct (argv, file contents, tables) in `plan`/pure helpers; perform in `vm`/effect modules. Inject effects that tests need to control (`validate(..., is_dir)`, `resolve_paths(env, uid)`).
+
+Comments and docstrings::
+Docstrings state contract and reason, one line where possible; module docstrings explain the module's role and any invariant it guards (see `guestfs`, `procs`, `kdl_serde`). Comments explain why or name a coupling (`# the name must match VmPaths.control_socket`), never restate code. Nix files follow the same density.
+
+Naming::
+Short, domain words: `vm`, `share`, `mount`, `guest`, `state`, `runtime`, `preset`. Private helpers `_prefixed`. Constants `UPPER_CASE` at module top.
+
+No hardcoding::
+No user names, uids, home paths or absolute host paths; everything derives from `Paths`, `RunConfig` or the process identity.
+
+User-facing text::
+Operator documentation (README, `--help`, log lines, the guest README in `nixconfig.GUEST_README`) is factual and imperative, says what happens and where files are, and stays consistent across all four; a behaviour change updates each that mentions it.
+
+=== Tests
+
+* `pytest` + Hypothesis (`default` profile 200 examples, `thorough` 5000 via `mise run test-thorough`).
+* Test names are sentences stating the property: `test_guest_edits_stay_in_the_guest`, `test_sweep_leaves_unrelated_processes_with_recycled_pids_alone`.
+* Prefer properties for bijections and validators (`test_config_survives_a_trip_through_kdl`), examples for policies.
+* Effects are tested for real against `tmp_path` (symlink attacks in `test_guestfs`, real processes under a renamed `sleep` in `test_procs`); nothing launches Nix or qemu.
+* Security properties get a named test each (symlinked dir refused, host-side mounts record wins over the guest's, console escapes stripped).
+
+=== Commits
+
+Imperative subject ≤ ~72 chars stating the change (`Make boot and stop timeouts configurable in run_config.kdl`). Body: technical description of what changed and why, affected keys/flags/files, and compatibility notes (e.g. existing presets not updated). No narration. One logical change per commit, docs with the code they describe.
+
+== Workflow
+
+[source,fish]
+----
+mise install               # python 3.14, uv
+mise run sync              # venv
+mise run test              # pytest + hypothesis
+mise run test-thorough     # 5000 examples per property
+mise run lint              # ruff check, ruff format --check, basedpyright
+mise run fmt               # autofix + format
+mise run install           # editable `amoeboid` on PATH
+uv run amoeboid --help     # run from the checkout
+----
+
+`amoeboid.py` at the repository root is a shim that re-executes itself through `uv run` and strips its own directory from `sys.path` (it would shadow the package); it can be symlinked into `$PATH`.
+
+Checklist for a change:
+
+. Pure part in `plan`/`mounts`/`config`/`paths` with tests; effects in the owning module; orchestration in `vm`.
+. If it touches guest-writable paths: `guestfs` only, plus a test with a planted symlink.
+. If it touches `base.nix` or a coupled name: update both sides of the coupling table and verify in a scratch VM.
+. Help text, README, guest README updated where they describe the behaviour.
+. `mise run test` and `mise run lint` clean.
