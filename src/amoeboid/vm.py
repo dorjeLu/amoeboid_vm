@@ -51,7 +51,7 @@ def start(req: StartRequest) -> Result[int, AppError]:
     procs.sweep(vm).or_bail()
     prepare_dirs(vm).or_bail()
     cfg = req.config
-    host = nixconfig.write_host_module(vm, cfg.user, cfg.uid, cfg.gid).or_bail()
+    host = nixconfig.write_host_module(vm, cfg.user, cfg.uid, cfg.gid, req.home).or_bail()
     flake = nixconfig.prepare(vm, req.base_nix_config, req.default_nix_config).or_bail()
     build(vm, flake, host).or_bail()
     ssh.ensure_host_key(vm).or_bail()

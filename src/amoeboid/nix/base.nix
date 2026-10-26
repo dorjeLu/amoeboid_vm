@@ -7,7 +7,7 @@ let
   # Per-VM state dir from the host (<data dir>/amoeboid/<name>/guest). The launcher
   # writes the files read below into it before every boot.
   state = "/mnt/amoeboid";
-  home = "/home/${cfg.user}";
+  home = cfg.home;
 in
 {
   options.amoeboid = {
@@ -17,6 +17,10 @@ in
     };
     uid = lib.mkOption { type = lib.types.int; };
     gid = lib.mkOption { type = lib.types.int; };
+    home = lib.mkOption {
+      type = lib.types.str;
+      description = "Guest home; the host user's home path, so paths are the same on both.";
+    };
   };
 
   config = {

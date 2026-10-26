@@ -7,4 +7,5 @@
   amoeboid.user = "amoeboid";
   amoeboid.uid = 1000;
   amoeboid.gid = 1000;
+  amoeboid.home = "/home/amoeboid";
 }

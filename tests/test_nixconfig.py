@@ -22,7 +22,7 @@ def vm(paths: Paths) -> VmPaths:
 
 @pytest.fixture
 def host_module(vm: VmPaths) -> Path:
-    match nixconfig.write_host_module(vm, "u", 1000, 100):
+    match nixconfig.write_host_module(vm, "u", 1000, 100, Path("/home/u")):
         case Ok(path):
             return path
         case Err(error):
@@ -166,8 +166,33 @@ def test_host_module_is_the_account_from_the_config(vm: VmPaths, host_module: Pa
     assert 'amoeboid.user = "u";' in text
     assert "amoeboid.uid = 1000;" in text
     assert "amoeboid.gid = 100;" in text
+    assert 'amoeboid.home = "/home/u";' in text
 
 
 def test_host_module_follows_config_changes(vm: VmPaths, host_module: Path) -> None:
-    nixconfig.write_host_module(vm, "bob", 1001, 1001)
-    assert 'amoeboid.user = "bob";' in host_module.read_text()
+    nixconfig.write_host_module(vm, "bob", 1001, 1001, Path("/var/home/bob"))
+    text = host_module.read_text()
+    assert 'amoeboid.user = "bob";' in text
+    assert 'amoeboid.home = "/var/home/bob";' in text
+
+
+def test_guest_home_is_the_host_home_whatever_the_user_name() -> None:
+    text = nixconfig.render_host_module("agent", 1000, 1000, Path("/Users/alice"))
+    assert 'amoeboid.home = "/Users/alice";' in text
+
+
+def test_guest_home_is_a_quoted_nix_string() -> None:
+    text = nixconfig.render_host_module("u", 1, 1, Path('/h/a"b\\c${x}'))
+    assert 'amoeboid.home = "/h/a\\"b\\\\c\\${x}";' in text
+
+
+@pytest.mark.parametrize(
+    "home", ["/", "relative", "/nix/store/x", "/mnt/amoeboid", "/etc/u", "/root", "/home/a\nb"]
+)
+def test_unusable_homes_are_refused(vm: VmPaths, home: str) -> None:
+    match nixconfig.write_host_module(vm, "u", 1000, 100, Path(home)):
+        case Err(error):
+            assert "as the VM's home directory" in error.message
+        case Ok(_):
+            pytest.fail(f"accepted {home!r}")
+    assert not vm.host_module.exists()

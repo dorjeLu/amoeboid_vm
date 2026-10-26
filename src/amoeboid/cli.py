@@ -263,7 +263,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         epilog=(
             "keys:\n"
             "  user, uid, gid     guest account; seeded from the user running amoeboid,\n"
-            "                     rendered into each VM's host.nix on every start\n"
+            "                     rendered into each VM's host.nix on every start (the\n"
+            "                     guest's home is always your $HOME path)\n"
             "  base-nix-config    preset name or directory new VMs are created from\n"
             "  default-mounts     shared when `start` gets no MOUNT; a (list) of\n"
             '                     { path "/abs/dir"; mode "rw" | "ro" }\n'
@@ -343,7 +344,7 @@ def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
     name = vm_name(launch.name).or_bail()
     cfg = _load(paths).or_bail()
     cwd = Path.cwd()
-    protected = [Path("/home") / cfg.user, paths.home]
+    protected = [paths.home]  # also the guest's home
 
     prompted = False
     if launch.mounts:

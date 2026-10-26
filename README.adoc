@@ -70,7 +70,7 @@ Each `MOUNT` is `PATH[:rw|:ro]` (default `rw`). A directory appears inside the V
 
 * Read-only (`:ro`) is enforced on the host: even root in the VM cannot write there.
 * Read-write means an agent can change or delete anything in that directory. Share the narrowest directories that work.
-* `/`, `/home`, your home and the guest's home are refused, since they would hide the VM's own home. Nested shares are fine; a directory may be given once.
+* `/`, `/home` and your home (which is also the guest's home) are refused, since they would hide the VM's own home. Nested shares are fine; a directory may be given once.
 
 Without any `MOUNT`, amoeboid uses, in order: what that VM shared last time (recorded on the host), `default-mounts` from the config, or asks interactively (and offers to save the answer as `default-mounts`).
 `--save-mounts` stores the given mounts as `default-mounts`.
@@ -99,6 +99,7 @@ Every command has `--help`. Options are long-only and must be spelled out in ful
 === Inside the VM
 
 You are logged in (console) or connect (ssh) as your own user name, with your uid/gid, passwordless `sudo`, and fish with mise.
+The home directory has the same path as your home on the host, and shares appear at their host paths, so a path copied on the host means the same thing in the VM.
 The home directory persists across restarts; everything outside it and the shares is reset on every boot.
 The default configuration includes opencode, mise (prebuilt node/python), rustup, a C toolchain, python3, nodejs, ripgrep, fd, jq, yq, git, gh and the usual network, archive and process tools.
 
@@ -129,7 +130,7 @@ A configuration is a directory holding a small flake:
 |`host-default.nix` |placeholder for the `host` input (amoeboid always overrides it)
 |===
 
-The `host` input is the guest account (`amoeboid.user`, `uid`, `gid`), which amoeboid renders from `run_config.kdl` into `NAME/host.nix` on every start. Configurations therefore contain nothing about you and can be copied or shared as they are. Settings for all your VMs, such as sizing, go in your presets' `recipe.nix`.
+The `host` input is the guest account (`amoeboid.user`, `uid`, `gid` from `run_config.kdl`, and `amoeboid.home`, your `$HOME` path), which amoeboid renders into `NAME/host.nix` on every start. Configurations therefore contain nothing about you and can be copied or shared as they are. Settings for all your VMs, such as sizing, go in your presets' `recipe.nix`.
 
 === Presets
 
