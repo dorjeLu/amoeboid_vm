@@ -180,6 +180,15 @@ in
     # Serial console: log straight in, with a sane TERM and the host terminal's size.
     services.getty.autologinUser = cfg.user;
     systemd.services."serial-getty@ttyS0".environment.TERM = "xterm-256color";
+    # The console session is the VM: logging out of it powers off rather than logging
+    # straight back in. ssh sessions are untouched. login also exits cleanly when
+    # stopped for a shutdown, hence the check, so a reboot stays a reboot.
+    systemd.services."serial-getty@ttyS0".serviceConfig.ExecStopPost =
+      "${pkgs.writeShellScript "amoeboid-console-logout" ''
+        [ "$EXIT_CODE" = exited ] || exit 0
+        [ "$(${pkgs.systemd}/bin/systemctl is-system-running)" = stopping ] && exit 0
+        exec ${pkgs.systemd}/bin/systemctl poweroff --no-block
+      ''}";
     environment.loginShellInit = ''
       if [ "$(tty)" = /dev/ttyS0 ] && [ -r ${state}/term ]; then
         stty $(cat ${state}/term)

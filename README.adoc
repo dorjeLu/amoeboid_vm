@@ -77,7 +77,7 @@ Without any `MOUNT`, amoeboid uses, in order: what that VM shared last time (rec
 
 === Foreground or detached
 
-Foreground (default):: the serial console is your terminal until the guest powers off. Leave with `poweroff` inside the VM, or `amoeboid stop` from another terminal.
+Foreground (default):: the serial console is your terminal until the guest powers off. Leave by logging out of the console (`exit`) or with `poweroff`; either powers the VM off. `amoeboid stop` from another terminal does the same. Logging out of an ssh session only ends that session.
 `--detach`:: the boot log is streamed until the guest's sshd answers (`--boot-timeout`, default `timeouts.boot`, 180 s), then amoeboid prints how to connect and exits. The console keeps going to `~/.local/share/amoeboid/NAME/console.log`.
 
 Either way, the ssh port is printed before boot, together with an `ssh` command you can paste to connect without amoeboid (`--detach` prints it again once sshd answers).

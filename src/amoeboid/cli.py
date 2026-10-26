@@ -197,7 +197,7 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
         description=(
             "Ask the guest to power off (ACPI power button), wait for it, then stop the\n"
             "helper processes. If the guest doesn't power off in time, qemu is killed.\n"
-            "Running `poweroff` inside the VM has the same effect."
+            "Running `poweroff` inside the VM, or logging out of its console, has the same effect."
         ),
     )
     _name_option(stop)

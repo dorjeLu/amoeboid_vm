@@ -255,7 +255,7 @@ def _announce(req: StartRequest, port: int) -> None:
     log.info("ssh: 127.0.0.1:%d, user %s: `amoeboid ssh%s`, or", port, req.config.user, flag)
     log.info("  %s", ssh_command(req, port))
     if not req.detach:
-        log.info("console attached; leave with `poweroff` (or `amoeboid stop%s`)", flag)
+        log.info("console attached; leave with `exit` or `poweroff` (or `amoeboid stop%s`)", flag)
 
 
 def ssh_command(req: StartRequest, port: int) -> str:
