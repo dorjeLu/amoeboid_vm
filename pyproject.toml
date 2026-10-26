@@ -3,6 +3,8 @@ name = "amoeboid"
 version = "0.1.0"
 description = "NixOS microVMs for letting agents loose on host directories"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = ["ckdl>=1.0"]
 
 [project.scripts]
