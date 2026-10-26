@@ -32,6 +32,14 @@ class SshConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TimeoutsConfig:
+    boot: int = 180
+    """Seconds a detached start waits for the guest's sshd; `--boot-timeout` overrides."""
+    stop: int = 60
+    """Seconds the guest gets to power off before qemu is killed; `--timeout` overrides."""
+
+
+@dataclass(frozen=True, slots=True)
 class RunConfig:
     user: str
     """Guest user name; with uid/gid, rendered into each VM's host.nix on every start."""
@@ -44,6 +52,7 @@ class RunConfig:
     home_files: tuple[str, ...] = ()
     """Paths relative to $HOME copied into the guest's home on every start."""
     ssh: SshConfig = field(default_factory=SshConfig)
+    timeouts: TimeoutsConfig = field(default_factory=TimeoutsConfig)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +94,7 @@ def to_document(cfg: RunConfig) -> Document:
         "default-mounts": mounts,
         "home-files": home_files,
         "ssh": {"port": cfg.ssh.port},
+        "timeouts": {"boot": cfg.timeouts.boot, "stop": cfg.timeouts.stop},
     }
 
 
@@ -93,6 +103,10 @@ def to_document(cfg: RunConfig) -> Document:
 type Decoder[T] = Callable[[Value], Result[T, str]]
 
 _USER = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
+_KEYS = {
+    *("user", "uid", "gid", "base-nix-config", "default-mounts", "home-files"),
+    *("ssh", "timeouts"),
+}
 
 
 def from_document(doc: Document, base: Path) -> Result[RunConfig, AppError]:
@@ -105,14 +119,24 @@ def from_document(doc: Document, base: Path) -> Result[RunConfig, AppError]:
         _optional(doc, "default-mounts", _list_of(_mount(base)), []),
         _optional(doc, "home-files", _list_of(_home_file), []),
         _optional(doc, "ssh", _ssh, SshConfig()),
-        _known_keys(
-            doc,
-            {"user", "uid", "gid", "base-nix-config", "default-mounts", "home-files", "ssh"},
-        ),
+        _optional(doc, "timeouts", _timeouts, TimeoutsConfig()),
+        _known_keys(doc, _KEYS),
     )
     match results:
-        case (Ok(user), Ok(uid), Ok(gid), Ok(nix), Ok(mounts), Ok(home_files), Ok(ssh), Ok()):
-            return Ok(RunConfig(user, uid, gid, nix, tuple(mounts), tuple(home_files), ssh))
+        case (
+            Ok(user),
+            Ok(uid),
+            Ok(gid),
+            Ok(nix),
+            Ok(mounts),
+            Ok(home_files),
+            Ok(ssh),
+            Ok(timeouts),
+            Ok(),
+        ):
+            return Ok(
+                RunConfig(user, uid, gid, nix, tuple(mounts), tuple(home_files), ssh, timeouts)
+            )
         case _:
             problems = [r.error for r in results if isinstance(r, Err)]
             return fail("invalid configuration:\n" + "\n".join(f"  {p}" for p in problems))
@@ -222,6 +246,22 @@ def _ssh(v: Value) -> Result[SshConfig, str]:
         case (Ok(port), Ok()):
             return Ok(SshConfig(port))
         case (Err(e), _) | (_, Err(e)):
+            return Err(e)
+
+
+def _timeouts(v: Value) -> Result[TimeoutsConfig, str]:
+    if not isinstance(v, dict):
+        return Err("expected a block, e.g. timeouts { boot 180; stop 60 }")
+    default = TimeoutsConfig()
+    seconds = _int_in(1, 24 * 3600)
+    match (
+        _optional(v, "boot", seconds, default.boot),
+        _optional(v, "stop", seconds, default.stop),
+        _known_keys(v, {"boot", "stop"}),
+    ):
+        case (Ok(boot), Ok(stop), Ok()):
+            return Ok(TimeoutsConfig(boot, stop))
+        case (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)):
             return Err(e)
 
 

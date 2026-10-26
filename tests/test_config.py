@@ -5,7 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from amoeboid import config
-from amoeboid.config import Identity, RunConfig, SshConfig
+from amoeboid.config import Identity, RunConfig, SshConfig, TimeoutsConfig
 from amoeboid.errors import AppError
 from amoeboid.mounts import Mode, Mount
 from amoeboid.paths import Paths, resolve_paths
@@ -45,6 +45,7 @@ configs = st.builds(
     default_mounts=st.lists(st.builds(Mount, abs_paths, st.sampled_from(Mode))).map(tuple),
     home_files=st.lists(rel_files).map(tuple),
     ssh=st.builds(SshConfig, st.just(0) | st.integers(1024, 65535)),
+    timeouts=st.builds(TimeoutsConfig, st.integers(1, 86400), st.integers(1, 86400)),
 )
 
 
@@ -89,6 +90,10 @@ def test_rendered_example() -> None:
         "ssh {\n"
         "    port 0\n"
         "}\n"
+        "timeouts {\n"
+        "    boot 180\n"
+        "    stop 60\n"
+        "}\n"
     )
 
 
@@ -116,6 +121,7 @@ def test_every_problem_is_reported() -> None:
         (list)default-mounts { - { path "/x"; mode "rx" }; - "/y" }
         (list)home-files { - "../escape"; - "/abs" }
         ssh { port 22; colour "red" }
+        timeouts { boot 0; stop 1.5; kill 3 }
         typo 1
     """
     message = err(config.parse(text, BASE))
@@ -127,9 +133,15 @@ def test_every_problem_is_reported() -> None:
         "default-mounts: item 0: mode must be one of rw, ro, got 'rx'",
         "home-files: item 0: '../escape' must be a path relative to $HOME",
         "ssh: port: use 0 (pick a free port) or 1024..65535",
+        "timeouts: boot: 0 is outside 1..86400",
         "unknown key(s) typo",
     ]:
         assert expected in message
+
+
+def test_timeouts_may_be_given_in_part() -> None:
+    cfg = ok(config.parse('user "bob"; uid 1; gid 1; timeouts { boot 600 }', BASE))
+    assert cfg.timeouts == TimeoutsConfig(boot=600, stop=60)
 
 
 def test_invalid_kdl_is_an_error_not_an_exception() -> None:

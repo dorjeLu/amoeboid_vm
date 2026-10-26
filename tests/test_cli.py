@@ -72,3 +72,16 @@ def test_every_command_dispatches(command: str) -> None:
 def test_bare_invocation_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main([]) == 0
     assert "commands:" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("argv", "attr"),
+    [
+        (["start"], "boot_timeout"),
+        (["stop"], "timeout"),
+        (["restart"], "timeout"),
+        (["restart"], "boot_timeout"),
+    ],
+)
+def test_timeouts_default_to_the_config(argv: list[str], attr: str) -> None:
+    assert getattr(parse(*argv), attr) is None

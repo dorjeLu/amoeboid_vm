@@ -163,9 +163,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     start.add_argument(
         "--boot-timeout",
         type=float,
-        default=180.0,
         metavar="SECONDS",
-        help="with --detach: how long to wait for sshd (default: 180)",
+        help="with --detach: how long to wait for sshd (default: timeouts.boot, 180)",
     )
     start.add_argument("mounts", nargs="*", metavar="MOUNT", help="directory to share; see below")
 
@@ -205,9 +204,8 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     stop.add_argument(
         "--timeout",
         type=float,
-        default=60.0,
         metavar="SECONDS",
-        help="how long the guest gets to power off (default: 60)",
+        help="how long the guest gets to power off (default: timeouts.stop, 60)",
     )
 
     restart = sub(
@@ -225,16 +223,14 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
     restart.add_argument(
         "--timeout",
         type=float,
-        default=60.0,
         metavar="SECONDS",
-        help="how long the guest gets to power off (default: 60)",
+        help="how long the guest gets to power off (default: timeouts.stop, 60)",
     )
     restart.add_argument(
         "--boot-timeout",
         type=float,
-        default=180.0,
         metavar="SECONDS",
-        help="how long to wait for sshd after booting (default: 180)",
+        help="how long to wait for sshd after booting (default: timeouts.boot, 180)",
     )
     restart.add_argument("--base-nix-config", metavar="NAME|PATH", help=BASE_NIX_HELP)
     restart.add_argument("mounts", nargs="*", metavar="MOUNT", help="replaces last run's shares")
@@ -271,6 +267,9 @@ def build_parser(paths: Paths | None) -> argparse.ArgumentParser:
             "  home-files         files under $HOME copied into the VM's home on every\n"
             '                     start, as a (list) of relative paths, e.g. ".gitconfig"\n'
             "  ssh { port N }     loopback port for ssh; 0 picks a free one each start\n"
+            "  timeouts { boot S; stop S }\n"
+            "                     seconds to wait for sshd after a detached boot (180)\n"
+            "                     and for the guest to power off (60); flags override\n"
             "\n"
             "  VM sizing (vcpu, memory) and other NixOS settings belong in a preset's or a\n"
             "  VM's recipe.nix; see `amoeboid presets`."
@@ -302,7 +301,8 @@ class Launch:
     base_nix_config: str | None
     save_mounts: bool
     detach: bool
-    boot_timeout: float
+    boot_timeout: float | None
+    """None: timeouts.boot from the config."""
     previous: tuple[Mount, ...] = ()
     """Mounts of the VM's last run (recorded host-side), preferred over default-mounts."""
 
@@ -326,7 +326,8 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
 def cmd_restart(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     name = vm_name(args.name).or_bail()
     target = paths.vm(name)
-    vm.stop(target, args.timeout).or_bail()
+    cfg = _load(paths).or_bail()
+    vm.stop(target, _seconds(args.timeout, cfg.timeouts.stop)).or_bail()
     launch = Launch(
         name,
         args.mounts,
@@ -380,7 +381,7 @@ def _launch(launch: Launch, paths: Paths) -> Result[int, AppError]:
         default_nix_config=default,
         mounts=tuple(mounts),
         detach=launch.detach,
-        boot_timeout=launch.boot_timeout,
+        boot_timeout=_seconds(launch.boot_timeout, cfg.timeouts.boot),
     )
     return vm.start(request)
 
@@ -407,7 +408,8 @@ def cmd_ssh(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
 @railway
 def cmd_stop(args: argparse.Namespace, paths: Paths) -> Result[int, AppError]:
     name = vm_name(args.name).or_bail()
-    return vm.stop(paths.vm(name), args.timeout)
+    cfg = _load(paths).or_bail()
+    return vm.stop(paths.vm(name), _seconds(args.timeout, cfg.timeouts.stop))
 
 
 @railway
@@ -457,6 +459,10 @@ COMMANDS = {
 
 
 # -- helpers ----------------------------------------------------------------------------
+
+
+def _seconds(flag: float | None, configured: int) -> float:
+    return float(configured) if flag is None else flag
 
 
 @railway

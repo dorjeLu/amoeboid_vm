@@ -78,7 +78,7 @@ Without any `MOUNT`, amoeboid uses, in order: what that VM shared last time (rec
 === Foreground or detached
 
 Foreground (default):: the serial console is your terminal until the guest powers off. Leave with `poweroff` inside the VM, or `amoeboid stop` from another terminal.
-`--detach`:: the boot log is streamed until the guest's sshd answers (`--boot-timeout`, default 180 s), then amoeboid prints how to connect and exits. The console keeps going to `~/.local/share/amoeboid/NAME/console.log`.
+`--detach`:: the boot log is streamed until the guest's sshd answers (`--boot-timeout`, default `timeouts.boot`, 180 s), then amoeboid prints how to connect and exits. The console keeps going to `~/.local/share/amoeboid/NAME/console.log`.
 
 Either way, the ssh port is printed before boot, together with an `ssh` command you can paste to connect without amoeboid (`--detach` prints it again once sshd answers).
 That command pins the VM's host key the way `amoeboid ssh` does, so it never touches your `~/.ssh/known_hosts`.
@@ -90,7 +90,7 @@ Set `ssh { port N }` in the config for a port that stays the same across starts.
 |===
 |`amoeboid list` |every VM, whether it runs, its ssh port and its shares
 |`amoeboid ssh [--name N] [-- ARGS]` |shell or command in a running VM; `ARGS` go to ssh after the destination
-|`amoeboid stop [--name N] [--timeout S]` |ACPI power-off, wait (default 60 s), then kill qemu if needed
+|`amoeboid stop [--name N] [--timeout S]` |ACPI power-off, wait (default `timeouts.stop`, 60 s), then kill qemu if needed
 |`amoeboid restart [--name N] [MOUNT ...]` |stop, then start detached and rebuilt; keeps the last shares unless given new ones
 |`amoeboid presets` |list presets and which one new VMs use
 |`amoeboid config [--path]` |print the configuration file (or its location)
@@ -201,6 +201,10 @@ base-nix-config "default"
 ssh {
     port 0
 }
+timeouts {
+    boot 180
+    stop 60
+}
 ----
 
 [cols="1,3"]
@@ -210,6 +214,7 @@ ssh {
 |`default-mounts` |shares for a new VM started without `MOUNT`s
 |`home-files` |files under your home copied into each VM's home on every start (host copy wins). Seeded with your git config if you have one; a signing key or credential helper it references won't exist in the VM.
 |`ssh.port` |host loopback port for ssh; `0` picks a free one per start
+|`timeouts.boot`, `timeouts.stop` |seconds a detached start or `restart` waits for the guest's sshd, and seconds `stop`/`restart` give the guest to power off before killing qemu. `--boot-timeout` and `--timeout` override them per command.
 |===
 
 amoeboid reads the file once per command. It rewrites it only when saving something itself (first run, `--save-mounts`, saving prompted mounts), atomically and in canonical form, keeping only the header comment.
@@ -283,7 +288,7 @@ Connect with `amoeboid ssh --name NAME`, or stop it with `amoeboid stop --name N
 A previous launcher died without cleaning up; amoeboid cleaned up for you. Nothing to do.
 
 `sshd didn't come up within ...`::
-Read `~/.local/share/amoeboid/NAME/console.log`. First boots after big configuration changes can be slow; raise `--boot-timeout`.
+Read `~/.local/share/amoeboid/NAME/console.log`. First boots after big configuration changes can be slow; raise `timeouts.boot` (or pass `--boot-timeout`).
 
 `nix build failed`::
 The build output above it names the problem, usually an error in the VM's `NAME/nix/recipe.nix`. Fix it there, or re-create the configuration with `--base-nix-config`.
@@ -301,7 +306,7 @@ The console is the wrong size::
 It is taken from your terminal at start. Fix it with `stty rows R cols C` inside, or use `amoeboid ssh`, which follows resizes.
 
 The guest won't power off::
-`amoeboid stop` kills qemu after `--timeout` seconds.
+`amoeboid stop` kills qemu after `timeouts.stop` (or `--timeout`) seconds.
 
 == How it works
 
