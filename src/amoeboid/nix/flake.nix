@@ -15,15 +15,13 @@
 
   # amoeboid copies this directory as a preset (~/.config/amoeboid/nix_presets/<name>),
   # then per VM. Any directory works as a preset if its flake takes a `host` input and
-  # provides packages.x86_64-linux.default with `runner` and `virtiofsd`, and its NixOS
+  # provides packages.<host system>.default with `runner` and `virtiofsd`, and its NixOS
   # configuration keeps base.nix's contract (shares, extra-args file, control socket).
+  # The guest has the host's architecture: `nix build` picks the host system's package.
   outputs = { self, nixpkgs, microvm, host }:
     let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-    in
-    {
-      nixosConfigurations.vm = nixpkgs.lib.nixosSystem {
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      vm = system: nixpkgs.lib.nixosSystem {
         modules = [
           { nixpkgs.hostPlatform = system; }
           microvm.nixosModules.microvm
@@ -32,11 +30,17 @@
           "${host}"
         ];
       };
+    in
+    {
+      nixosConfigurations = nixpkgs.lib.genAttrs systems vm;
 
       # Everything the host side needs: the VM runner plus virtiofsd for the shares.
-      packages.${system}.default = pkgs.linkFarm "amoeboid-vm" {
-        runner = self.nixosConfigurations.vm.config.microvm.declaredRunner;
-        virtiofsd = pkgs.virtiofsd;
-      };
+      packages = nixpkgs.lib.genAttrs systems (system:
+        let pkgs = nixpkgs.legacyPackages.${system}; in {
+          default = pkgs.linkFarm "amoeboid-vm" {
+            runner = self.nixosConfigurations.${system}.config.microvm.declaredRunner;
+            virtiofsd = pkgs.virtiofsd;
+          };
+        });
     };
 }

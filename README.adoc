@@ -14,7 +14,7 @@ This guide is for the person running VMs. Everything an agent inside a VM needs 
 
 Requirements:
 
-* Linux x86_64 with KVM: `/dev/kvm` readable and writable by your user.
+* Linux on x86_64 or aarch64 with KVM: `/dev/kvm` readable and writable by your user. The VM has the host's architecture.
 * Nix with the daemon running. amoeboid enables `nix-command` and `flakes` for its own calls; no `nix.conf` change needed.
 * OpenSSH client tools (`ssh`, `ssh-keygen`).
 * mise, or Python 3.14 and uv.
