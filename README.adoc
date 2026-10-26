@@ -163,6 +163,8 @@ Rebuilds after small changes take seconds; unchanged configurations aren't rebui
 
 === Adopting changes an agent made
 
+WARNING: The configuration is evaluated into the qemu runner, which runs on your machine as you. A recipe can add qemu arguments, extra shares or nixpkgs overlays that reach anything your user can. Read what you adopt; don't copy whole trees blindly.
+
 Inside the VM, `~/amoeboid/nix/` is the agent's own full copy of the configuration (with the generated account module as `host.nix`), and `~/amoeboid/reference/` is what is actually running.
 amoeboid never reads the agent's copy and never overwrites it, so its edits have no effect until you apply them.
 
@@ -175,8 +177,6 @@ diff -ru $vm/nix $vm/guest/home/amoeboid/nix     # host.nix only exists on the g
 cp $vm/guest/home/amoeboid/nix/recipe.nix $vm/nix/recipe.nix   # copy files, don't follow links
 amoeboid restart --name proj
 ----
-
-WARNING: The configuration is evaluated into the qemu runner, which runs on your machine as you. A recipe can add qemu arguments, extra shares or nixpkgs overlays that reach anything your user can. Read what you adopt; don't copy whole trees blindly.
 
 [[config]]
 == Configuration file
