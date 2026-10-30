@@ -1,0 +1,20 @@
+[package]
+name = "amoeboid-cli"
+description = "Command-line launcher for amoeboid microVMs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "amoeboid"
+path = "src/main.rs"
+
+[dependencies]
+amoeboid.workspace = true
+lexopt.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "process", "net", "time", "io-util", "macros", "signal"] }
+
+[lints]
+workspace = true

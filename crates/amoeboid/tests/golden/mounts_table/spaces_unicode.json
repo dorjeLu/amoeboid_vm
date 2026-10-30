@@ -1,0 +1,12 @@
+{
+  "mounts": [
+    {
+      "path": "/srv/my project",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/\u65e5\u672c",
+      "mode": "ro"
+    }
+  ]
+}

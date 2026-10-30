@@ -36,10 +36,29 @@
 
       # Everything the host side needs: the VM runner plus virtiofsd for the shares.
       packages = nixpkgs.lib.genAttrs systems (system:
-        let pkgs = nixpkgs.legacyPackages.${system}; in {
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          config = self.nixosConfigurations.${system}.config;
+          share = tag: builtins.head (builtins.filter (s: s.tag == tag) config.microvm.shares);
+        in {
           default = pkgs.linkFarm "amoeboid-vm" {
-            runner = self.nixosConfigurations.${system}.config.microvm.declaredRunner;
+            runner = config.microvm.declaredRunner;
             virtiofsd = pkgs.virtiofsd;
+            # What the launcher relies on, read back and checked after every build.
+            contract = pkgs.writeText "amoeboid-contract.json" (builtins.toJSON {
+              version = config.amoeboid.contract;
+              home = "share";
+              controlSocket = config.microvm.socket;
+              stateShare = {
+                inherit (share "amoeboid") tag socket mountPoint;
+              };
+              storeShare = {
+                inherit (share "ro-store") tag socket;
+              };
+              extraArgsFile = "amoeboid-qemu-args";
+              stateFiles = [ "mounts" "hostname" "term" "ssh_host_ed25519_key" ];
+              guestSshPort = 22;
+            });
           };
         });
     };

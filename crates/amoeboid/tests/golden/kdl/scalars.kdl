@@ -1,0 +1,7 @@
+text "hello"
+int 42
+negative -7
+big 18446744073709551616
+yes #true
+no #false
+nothing #null

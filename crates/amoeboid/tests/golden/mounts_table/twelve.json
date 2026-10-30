@@ -1,0 +1,52 @@
+{
+  "mounts": [
+    {
+      "path": "/srv/m00",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m01",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m02",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m03",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m04",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m05",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m06",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m07",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m08",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m09",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m10",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m11",
+      "mode": "rw"
+    }
+  ]
+}

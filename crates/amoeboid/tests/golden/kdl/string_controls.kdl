@@ -1,0 +1,5 @@
+nul "a\u{0}b"
+bell "\u{7}"
+esc "\u{1b}[31m"
+del "\u{7f}"
+c1 "\u{85}\u{9b}"

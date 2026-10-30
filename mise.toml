@@ -1,6 +1,9 @@
 [tools]
 python = "3.14"
 uv = "0.13"
+rust = { version = "1.99.1", components = "clippy,rustfmt,llvm-tools" }
+"aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
+cargo-deny = "0.20.2"
 
 [tasks.sync]
 description = "Create/refresh the project venv"
@@ -30,3 +33,45 @@ run = "uv tool install --editable --force ."
 description = "Run the test suite with many more property-test examples"
 env = { HYPOTHESIS_PROFILE = "thorough" }
 run = "uv run pytest"
+
+[tasks.rs-test]
+description = "Run the Rust test suite"
+run = "cargo test --workspace"
+
+[tasks.rs-test-thorough]
+description = "Run the Rust test suite with many more property-test cases"
+env = { PROPTEST_CASES = "5000" }
+run = "cargo test --workspace"
+
+[tasks.rs-lint]
+description = "Lint and check formatting of the Rust workspace"
+run = [
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo fmt --all --check",
+]
+
+[tasks.rs-fmt]
+description = "Apply Rust formatting"
+run = "cargo fmt --all"
+
+[tasks.rs-cov]
+description = "Branch coverage of the Rust workspace; fails under 100 % for pure modules"
+# --branch needs -Z coverage-options=branch; RUSTC_BOOTSTRAP lets the pinned stable accept it.
+env = { RUSTC_BOOTSTRAP = "1" }
+run = [
+  "cargo llvm-cov --workspace --branch --no-report",
+  "cargo llvm-cov report --branch --summary-only",
+  "cargo llvm-cov report --branch --json --summary-only --output-path target/llvm-cov.json",
+  "mise run rs-cov-gate",
+]
+
+# The loop's agent can't run `jq -f` itself (Claude Code refuses jq's file-reading flags
+# whatever the allow rules say), so the gate is reachable through `mise run`.
+[tasks.rs-cov-gate]
+description = "Apply the pure-module branch gate to an llvm-cov JSON report"
+usage = 'arg "[report]" default="target/llvm-cov.json" help="cargo llvm-cov report --json output"'
+run = 'jq -r -f tools/cov-gate.jq "$usage_report"'
+
+[tasks.rs-deny]
+description = "Check the Rust dependency graph against deny.toml (crates, licences, sources)"
+run = "cargo deny check"

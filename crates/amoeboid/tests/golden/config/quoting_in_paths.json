@@ -1,0 +1,35 @@
+{
+  "user": "u",
+  "uid": 2,
+  "gid": 2,
+  "base_nix_config": "/srv/q\"uote",
+  "default_mounts": [
+    {
+      "path": "/srv/say \"hi\"",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/back\\slash",
+      "mode": "ro"
+    },
+    {
+      "path": "/srv/tab\there",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/new\nline",
+      "mode": "ro"
+    }
+  ],
+  "home_files": [
+    "dir/q\"uote",
+    "dir\\back",
+    "tab\tfile",
+    "keyword/true"
+  ],
+  "ssh_port": 0,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

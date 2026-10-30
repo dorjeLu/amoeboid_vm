@@ -1,0 +1,10 @@
+d1	ro	/srv/m0
+d2	rw	/srv/m1
+d3	rw	/srv/m2
+d4	ro	/srv/m3
+d5	rw	/srv/m4
+d6	rw	/srv/m5
+d7	ro	/srv/m6
+d8	rw	/srv/m7
+d9	rw	/srv/m8
+d10	ro	/srv/m9

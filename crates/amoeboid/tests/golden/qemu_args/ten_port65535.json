@@ -1,0 +1,45 @@
+{
+  "mounts": [
+    {
+      "path": "/srv/m0",
+      "mode": "ro"
+    },
+    {
+      "path": "/srv/m1",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m2",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m3",
+      "mode": "ro"
+    },
+    {
+      "path": "/srv/m4",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m5",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m6",
+      "mode": "ro"
+    },
+    {
+      "path": "/srv/m7",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m8",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/m9",
+      "mode": "ro"
+    }
+  ],
+  "ssh_port": 65535
+}

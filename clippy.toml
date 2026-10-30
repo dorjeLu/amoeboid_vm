@@ -1,0 +1,12 @@
+# Tests may unwrap/expect to build fixtures (design §Lints), never to assert.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+# Design §Refinement types/Enforcement: raw paths exist only in boundary modules, which carry
+# #![allow(clippy::disallowed_types, reason = "boundary: refines raw input")].
+disallowed-types = [
+  { path = "std::path::PathBuf", reason = "raw path: use a refined path type; boundary modules may allow it" },
+  { path = "std::path::Path", reason = "raw path: use a refined path type; boundary modules may allow it" },
+  { path = "std::ffi::OsString", reason = "raw OS string: refine it at a boundary" },
+  { path = "std::ffi::OsStr", reason = "raw OS string: refine it at a boundary" },
+]

@@ -1,0 +1,1 @@
+{"controlSocket":"control.sock","extraArgsFile":"amoeboid-qemu-args","guestSshPort":22,"home":"share","stateFiles":["mounts","hostname","term","ssh_host_ed25519_key"],"stateShare":{"mountPoint":"/mnt/amoeboid","socket":"state.sock","tag":"amoeboid"},"storeShare":{"socket":"ro-store.sock","tag":"ro-store"},"version":1}

@@ -1,0 +1,10 @@
+(list)mounts {
+    - {
+        path "/a"
+        mode "rw"
+    }
+    - {
+        path "/b"
+        mode "ro"
+    }
+}

@@ -1,0 +1,29 @@
+{
+  "guest_mac": "02:00:00:a0:0b:01",
+  "guest_ssh_port": 22,
+  "default_preset": "default",
+  "required_preset_files": [
+    "flake.nix"
+  ],
+  "guest_dir": "home/amoeboid",
+  "guest_own": "home/amoeboid/nix",
+  "guest_reference": "home/amoeboid/reference",
+  "reserved_homes": [
+    "/nix",
+    "/mnt/amoeboid",
+    "/etc",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/run",
+    "/boot",
+    "/root",
+    "/tmp",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64"
+  ],
+  "config_header": "// amoeboid run configuration (KDL v2). Read once per command, never hot-reloaded.\n// amoeboid rewrites this file when it saves a setting itself, keeping only this header\n// comment. Run `amoeboid config --help` for what each key means.\n"
+}

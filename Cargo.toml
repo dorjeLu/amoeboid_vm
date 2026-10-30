@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = ["crates/amoeboid", "crates/amoeboid-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+license = "MIT"
+
+# Features per crate are added where they are used (design §Dependencies).
+[workspace.dependencies]
+amoeboid = { path = "crates/amoeboid", version = "0.1.0" }
+kdl = "6.7.1"
+lexopt = "0.3.2"
+proptest = "1.12.0"
+rustix = { version = "1.1.6", features = ["fs", "process", "termios"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+# Set by cargo-llvm-cov under RUSTC_BOOTSTRAP (mise rs-cov); gates `coverage(off)`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+dbg_macro = "deny"
+exit = "deny"
+print_stdout = "deny"   # allowed in amoeboid-cli render module only
+print_stderr = "deny"
+pedantic = { level = "warn", priority = -1 }
+
+# Unwinding keeps guards' Drop running if a dependency panics. `test` and `bench` inherit
+# these and do not accept a `panic` setting of their own.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"

@@ -1,0 +1,107 @@
+//! Value objects: one module per type, each a refinement (design §Refinement types/Catalogue).
+
+mod components;
+mod scan;
+
+pub mod abs_path;
+pub mod base_spec;
+pub mod contract_version;
+pub mod file_mode;
+pub mod file_name;
+pub mod flake_path;
+pub mod gid;
+pub mod guest_dest;
+pub mod guest_home;
+pub mod guest_path;
+pub mod guest_port;
+pub mod guest_rel;
+pub mod home_rel;
+pub mod home_storage;
+pub mod host_facts;
+pub mod host_public_key;
+pub mod identity;
+pub mod kernel_version;
+pub mod linger;
+pub mod linger_policy;
+pub mod loopback_port;
+pub mod mode;
+pub mod mount;
+pub mod mount_spec;
+pub mod nix_source;
+pub mod observed;
+pub mod pid;
+pub mod preset_name;
+pub mod proc_identity;
+pub mod proc_stat;
+pub mod run_dir_name;
+pub mod seconds;
+pub mod share_tag;
+pub mod share_tag_name;
+pub mod shares;
+pub mod socket;
+pub mod spec_path;
+pub mod ssh_banner;
+pub mod ssh_port;
+pub mod start_time;
+pub mod state_file_name;
+pub mod term_size;
+pub mod timeout;
+pub mod tree_file;
+pub mod uid;
+pub mod user_name;
+pub mod vm_name;
+pub mod word;
+
+pub use abs_path::{AbsDir, AbsPath, AbsPathError, HomeDir, Segment, TmpDir, XdgDir};
+pub use base_spec::{BaseSpec, BaseSpecError};
+pub use contract_version::{ContractVersion, ContractVersionError};
+pub use file_mode::{FileMode, FileModeError};
+pub use file_name::{FileName, FileNameError};
+pub use flake_path::{FlakeAbs, FlakeDir, FlakePath, FlakePathError, FlakeSegment};
+pub use gid::{Gid, GidError};
+pub use guest_dest::GuestDest;
+pub use guest_home::{GuestHome, GuestHomeError, GuestHomeObserveError, RESERVED_HOMES};
+pub use guest_path::{GuestPath, GuestPathError};
+pub use guest_port::{GuestPort, GuestPortError};
+pub use guest_rel::{GuestFile, GuestRel, GuestRelError};
+pub use home_rel::{HomeRel, HomeRelError};
+pub use home_storage::HomeStorage;
+pub use host_facts::{KvmAccess, Switch, Tool, ToolPresence, UsernsSwitches};
+pub use host_public_key::{
+    HostPublicKey, HostPublicKeyError, KeyBase64, KeyBase64Error, KeyType, KeyTypeError,
+};
+pub use identity::{Identity, IdentityError};
+pub use kernel_version::{KernelVersion, KernelVersionError};
+pub use linger::Linger;
+pub use linger_policy::LingerPolicy;
+pub use loopback_port::{LoopbackPort, LoopbackPortError};
+pub use mode::Mode;
+pub use mount::{HostDir, HostDirError, Mount, MountRequest};
+pub use mount_spec::{MountSpec, MountSpecError};
+pub use nix_source::{FLAKE_NIX, NixSource, NixSourceError};
+pub use observed::{
+    Executable, ExecutableError, ExistingDir, ExistingDirError, ExistingFile, ExistingFileError,
+    Observation,
+};
+pub use pid::{Pid, PidError};
+pub use preset_name::{PresetName, PresetNameError};
+pub use proc_identity::{ProcIdentity, ProgramName, ProgramNameError};
+pub use proc_stat::{StatError, parse_stat};
+pub use run_dir_name::RunDirName;
+pub use seconds::{Seconds, SecondsError};
+pub use share_tag::ShareTag;
+pub use share_tag_name::{ShareTagName, ShareTagNameError};
+pub use shares::{MountProblem, Shares};
+pub use socket::{Socket, SocketError, SocketName};
+pub use spec_path::{ResolveError, SpecPath, SpecPathError};
+pub use ssh_banner::{SshBanner, SshBannerError};
+pub use ssh_port::{FixedPort, FixedPortError, SshPort};
+pub use start_time::StartTime;
+pub use state_file_name::{StateFileName, StateFileNameError};
+pub use term_size::{TermSize, TermSizeError};
+pub use timeout::{Timeout, TimeoutError};
+pub use tree_file::TreeFile;
+pub use uid::{Uid, UidError};
+pub use user_name::{UserName, UserNameError};
+pub use vm_name::{VmName, VmNameError};
+pub use word::{Fragment, Word, WordError};

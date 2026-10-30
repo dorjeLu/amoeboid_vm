@@ -1,0 +1,13 @@
+{
+  "user": "ab-_9b-_9b-_9b-_9b-_9b-_9b-_9c",
+  "uid": 5,
+  "gid": 5,
+  "base_nix_config": "default",
+  "default_mounts": [],
+  "home_files": [],
+  "ssh_port": 0,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

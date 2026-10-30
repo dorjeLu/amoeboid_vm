@@ -1,0 +1,4 @@
+neg_zero -0.0
+"nan" #nan
+"inf" #inf
+ninf #-inf

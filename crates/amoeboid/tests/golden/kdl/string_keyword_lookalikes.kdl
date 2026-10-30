@@ -1,0 +1,7 @@
+t "true"
+f "false"
+n "null"
+i "inf"
+"nan" "nan"
+hash_true "#true"
+number "42"

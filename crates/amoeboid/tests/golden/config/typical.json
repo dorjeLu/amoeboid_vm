@@ -1,0 +1,25 @@
+{
+  "user": "alice",
+  "uid": 1000,
+  "gid": 100,
+  "base_nix_config": "default",
+  "default_mounts": [
+    {
+      "path": "/srv/dev/app",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/libs",
+      "mode": "ro"
+    }
+  ],
+  "home_files": [
+    ".gitconfig",
+    ".config/git/config"
+  ],
+  "ssh_port": 0,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

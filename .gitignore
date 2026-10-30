@@ -6,3 +6,7 @@ __pycache__/
 .ruff_cache/
 dist/
 result
+target/
+
+# implementation loop logs
+plans/impl_plan/*/logs/

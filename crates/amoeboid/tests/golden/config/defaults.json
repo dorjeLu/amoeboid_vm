@@ -1,0 +1,13 @@
+{
+  "user": "alice",
+  "uid": 1000,
+  "gid": 100,
+  "base_nix_config": "default",
+  "default_mounts": [],
+  "home_files": [],
+  "ssh_port": 0,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

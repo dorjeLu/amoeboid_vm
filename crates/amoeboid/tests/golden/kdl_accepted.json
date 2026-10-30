@@ -1,0 +1,404 @@
+[
+  {
+    "name": "extra_whitespace",
+    "text": "user   \"u\"  \n\n\n  uid\t1000\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ],
+        [
+          "uid",
+          {
+            "int": "1000"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "semicolon_separated",
+    "text": "user \"u\"; uid 1000; gid 100\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ],
+        [
+          "uid",
+          {
+            "int": "1000"
+          }
+        ],
+        [
+          "gid",
+          {
+            "int": "100"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "bare_string_value",
+    "text": "user alice\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "alice"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "line_comment",
+    "text": "// c\nuser \"u\" // trailing\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "block_comment",
+    "text": "/* a /* nested */ b */ user \"u\"\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "slashdash_node",
+    "text": "user \"u\"\n/-skipped \"x\"\nuid 1\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ],
+        [
+          "uid",
+          {
+            "int": "1"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "slashdash_child",
+    "text": "a {\n    /-b 1\n    c 2\n}\n",
+    "value": {
+      "dict": [
+        [
+          "a",
+          {
+            "dict": [
+              [
+                "c",
+                {
+                  "int": "2"
+                }
+              ]
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "quoted_key",
+    "text": "\"user\" \"u\"\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "raw_string",
+    "text": "path #\"C:\\raw\\\"#\n",
+    "value": {
+      "dict": [
+        [
+          "path",
+          "C:\\raw\\"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "multiline_string",
+    "text": "text \"\"\"\n    one\n      two\n    \"\"\"\n",
+    "value": {
+      "dict": [
+        [
+          "text",
+          "one\n  two"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "unicode_escape",
+    "text": "e \"\\u{1F680} \\u{e9}\"\n",
+    "value": {
+      "dict": [
+        [
+          "e",
+          "\ud83d\ude80 \u00e9"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "whitespace_escape",
+    "text": "e \"a\\s b\"\n",
+    "value": {
+      "dict": [
+        [
+          "e",
+          "a  b"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "hex_octal_binary",
+    "text": "h 0x1f\no 0o17\nb 0b101\n",
+    "value": {
+      "dict": [
+        [
+          "h",
+          {
+            "int": "31"
+          }
+        ],
+        [
+          "o",
+          {
+            "int": "15"
+          }
+        ],
+        [
+          "b",
+          {
+            "int": "5"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "underscore_number",
+    "text": "n 1_000_000\n",
+    "value": {
+      "dict": [
+        [
+          "n",
+          {
+            "int": "1000000"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "float_exponent",
+    "text": "f 1.0e3\ng 2E-2\n",
+    "value": {
+      "dict": [
+        [
+          "f",
+          {
+            "float": "1000.0"
+          }
+        ],
+        [
+          "g",
+          {
+            "float": "0.02"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "positive_sign",
+    "text": "p +5\n",
+    "value": {
+      "dict": [
+        [
+          "p",
+          {
+            "int": "5"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "inline_children",
+    "text": "a { b 1; c 2 }\n",
+    "value": {
+      "dict": [
+        [
+          "a",
+          {
+            "dict": [
+              [
+                "b",
+                {
+                  "int": "1"
+                }
+              ],
+              [
+                "c",
+                {
+                  "int": "2"
+                }
+              ]
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "empty_children_block",
+    "text": "a {}\n",
+    "value": {
+      "dict": [
+        [
+          "a",
+          {
+            "dict": []
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "list_inline",
+    "text": "(list)l { - 1; - 2 }\n",
+    "value": {
+      "dict": [
+        [
+          "l",
+          [
+            {
+              "int": "1"
+            },
+            {
+              "int": "2"
+            }
+          ]
+        ]
+      ]
+    }
+  },
+  {
+    "name": "list_item_children",
+    "text": "(list)l {\n    - { k 1 }\n}\n",
+    "value": {
+      "dict": [
+        [
+          "l",
+          [
+            {
+              "dict": [
+                [
+                  "k",
+                  {
+                    "int": "1"
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      ]
+    }
+  },
+  {
+    "name": "line_continuation",
+    "text": "user \\\n    \"u\"\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "crlf_newlines",
+    "text": "user \"u\"\r\nuid 1\r\n",
+    "value": {
+      "dict": [
+        [
+          "user",
+          "u"
+        ],
+        [
+          "uid",
+          {
+            "int": "1"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "keyword_values",
+    "text": "a #true\nb #false\nc #null\nd #inf\ne #-inf\nf #nan\n",
+    "value": {
+      "dict": [
+        [
+          "a",
+          true
+        ],
+        [
+          "b",
+          false
+        ],
+        [
+          "c",
+          null
+        ],
+        [
+          "d",
+          {
+            "float": "inf"
+          }
+        ],
+        [
+          "e",
+          {
+            "float": "-inf"
+          }
+        ],
+        [
+          "f",
+          {
+            "float": "nan"
+          }
+        ]
+      ]
+    }
+  }
+]

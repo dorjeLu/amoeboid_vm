@@ -1,0 +1,86 @@
+[
+  {
+    "name": "plain",
+    "input": {
+      "flake": "/home/u/.local/share/amoeboid/proj/nix",
+      "host_module": "/h/host.nix",
+      "out_link": "/h/vm"
+    },
+    "output": [
+      "nix",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      "build",
+      "path:/home/u/.local/share/amoeboid/proj/nix",
+      "--override-input",
+      "host",
+      "path:/h/host.nix",
+      "--no-write-lock-file",
+      "--out-link",
+      "/h/vm"
+    ]
+  },
+  {
+    "name": "spaces",
+    "input": {
+      "flake": "/home/my user/amoeboid/p/nix",
+      "host_module": "/home/my user/amoeboid/p/host.nix",
+      "out_link": "/o/vm x"
+    },
+    "output": [
+      "nix",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      "build",
+      "path:/home/my user/amoeboid/p/nix",
+      "--override-input",
+      "host",
+      "path:/home/my user/amoeboid/p/host.nix",
+      "--no-write-lock-file",
+      "--out-link",
+      "/o/vm x"
+    ]
+  },
+  {
+    "name": "unicode",
+    "input": {
+      "flake": "/home/\u00fc/\u65e5\u672c/nix",
+      "host_module": "/home/\u00fc/\u65e5\u672c/host.nix",
+      "out_link": "/home/\u00fc/\u65e5\u672c/vm"
+    },
+    "output": [
+      "nix",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      "build",
+      "path:/home/\u00fc/\u65e5\u672c/nix",
+      "--override-input",
+      "host",
+      "path:/home/\u00fc/\u65e5\u672c/host.nix",
+      "--no-write-lock-file",
+      "--out-link",
+      "/home/\u00fc/\u65e5\u672c/vm"
+    ]
+  },
+  {
+    "name": "colon",
+    "input": {
+      "flake": "/srv/a:b/nix",
+      "host_module": "/srv/a:b/host.nix",
+      "out_link": "/srv/a:b/vm"
+    },
+    "output": [
+      "nix",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      "build",
+      "path:/srv/a:b/nix",
+      "--override-input",
+      "host",
+      "path:/srv/a:b/host.nix",
+      "--no-write-lock-file",
+      "--out-link",
+      "/srv/a:b/vm"
+    ]
+  }
+]

@@ -1,0 +1,29 @@
+// amoeboid run configuration (KDL v2). Read once per command, never hot-reloaded.
+// amoeboid rewrites this file when it saves a setting itself, keeping only this header
+// comment. Run `amoeboid config --help` for what each key means.
+
+user "alice"
+uid 1000
+gid 100
+base-nix-config "default"
+(list)default-mounts {
+    - {
+        path "/srv/dev/app"
+        mode "rw"
+    }
+    - {
+        path "/srv/libs"
+        mode "ro"
+    }
+}
+(list)home-files {
+    - ".gitconfig"
+    - ".config/git/config"
+}
+ssh {
+    port 0
+}
+timeouts {
+    boot 180
+    stop 60
+}

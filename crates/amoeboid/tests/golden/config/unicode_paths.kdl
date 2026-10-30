@@ -1,0 +1,41 @@
+// amoeboid run configuration (KDL v2). Read once per command, never hot-reloaded.
+// amoeboid rewrites this file when it saves a setting itself, keeping only this header
+// comment. Run `amoeboid config --help` for what each key means.
+
+user "u"
+uid 2
+gid 2
+base-nix-config "default"
+(list)default-mounts {
+    - {
+        path "/srv/日本語"
+        mode "rw"
+    }
+    - {
+        path "/srv/café ñ"
+        mode "ro"
+    }
+    - {
+        path "/srv/rocket-🚀"
+        mode "rw"
+    }
+    - {
+        path "/srv/zero\u{200b}width"
+        mode "rw"
+    }
+    - {
+        path "/srv/nb\u{a0}sp"
+        mode "ro"
+    }
+}
+(list)home-files {
+    - "dokumente/ärger.txt"
+    - "é.conf"
+}
+ssh {
+    port 0
+}
+timeouts {
+    boot 180
+    stop 60
+}

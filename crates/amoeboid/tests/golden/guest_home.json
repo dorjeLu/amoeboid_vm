@@ -1,0 +1,400 @@
+[
+  {
+    "name": "typical",
+    "input": {
+      "home": "/home/alice"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "nested",
+    "input": {
+      "home": "/var/lib/users/alice"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "unicode",
+    "input": {
+      "home": "/home/\u65e5\u672c"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "with_space",
+    "input": {
+      "home": "/home/a b"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "root_dir",
+    "input": {
+      "home": "/"
+    },
+    "output": {
+      "ok": false,
+      "kind": "not_absolute_or_root"
+    }
+  },
+  {
+    "name": "relative",
+    "input": {
+      "home": "home/alice"
+    },
+    "output": {
+      "ok": false,
+      "kind": "not_absolute_or_root"
+    }
+  },
+  {
+    "name": "empty",
+    "input": {
+      "home": ""
+    },
+    "output": {
+      "ok": false,
+      "kind": "not_absolute_or_root"
+    }
+  },
+  {
+    "name": "dot_relative",
+    "input": {
+      "home": "./home"
+    },
+    "output": {
+      "ok": false,
+      "kind": "not_absolute_or_root"
+    }
+  },
+  {
+    "name": "nix",
+    "input": {
+      "home": "/nix"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "under_nix",
+    "input": {
+      "home": "/nix/home"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "mnt_amoeboid",
+    "input": {
+      "home": "/mnt/amoeboid"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "under_mnt_amoeboid",
+    "input": {
+      "home": "/mnt/amoeboid/home"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "mnt_alone_is_fine",
+    "input": {
+      "home": "/mnt"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "mnt_other_is_fine",
+    "input": {
+      "home": "/mnt/other"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "mnt_amoeboid_prefix_is_fine",
+    "input": {
+      "home": "/mnt/amoeboidx"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "etc",
+    "input": {
+      "home": "/etc"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "under_etc",
+    "input": {
+      "home": "/etc/home"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "proc",
+    "input": {
+      "home": "/proc/1"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "sys",
+    "input": {
+      "home": "/sys"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "dev",
+    "input": {
+      "home": "/dev/shm"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "run",
+    "input": {
+      "home": "/run/user/1000"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "boot",
+    "input": {
+      "home": "/boot"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "root",
+    "input": {
+      "home": "/root"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "under_root",
+    "input": {
+      "home": "/root/x"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "tmp",
+    "input": {
+      "home": "/tmp/h"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "usr",
+    "input": {
+      "home": "/usr/home"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "bin",
+    "input": {
+      "home": "/bin"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "sbin",
+    "input": {
+      "home": "/sbin"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "lib",
+    "input": {
+      "home": "/lib"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "lib64",
+    "input": {
+      "home": "/lib64"
+    },
+    "output": {
+      "ok": false,
+      "kind": "reserved"
+    }
+  },
+  {
+    "name": "lib64_prefix_is_fine",
+    "input": {
+      "home": "/lib64x"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "homes_prefix_is_fine",
+    "input": {
+      "home": "/homes"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "opt_is_fine",
+    "input": {
+      "home": "/opt/u"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "nul",
+    "input": {
+      "home": "/home/a\u0000b"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "soh",
+    "input": {
+      "home": "/home/a\u0001b"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "tab",
+    "input": {
+      "home": "/home/a\tb"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "newline",
+    "input": {
+      "home": "/home/a\nb"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "unit_separator",
+    "input": {
+      "home": "/home/a\u001fb"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "del",
+    "input": {
+      "home": "/home/a\u007fb"
+    },
+    "output": {
+      "ok": false,
+      "kind": "control_characters"
+    }
+  },
+  {
+    "name": "space_is_fine",
+    "input": {
+      "home": "/home/a b"
+    },
+    "output": {
+      "ok": true
+    }
+  },
+  {
+    "name": "tilde_is_fine",
+    "input": {
+      "home": "/home/~x"
+    },
+    "output": {
+      "ok": true
+    }
+  }
+]
