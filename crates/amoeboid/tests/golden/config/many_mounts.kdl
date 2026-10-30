@@ -1,0 +1,66 @@
+// amoeboid run configuration (KDL v2). Read once per command, never hot-reloaded.
+// amoeboid rewrites this file when it saves a setting itself, keeping only this header
+// comment. Run `amoeboid config --help` for what each key means.
+
+user "u"
+uid 2
+gid 2
+base-nix-config "default"
+(list)default-mounts {
+    - {
+        path "/srv/m0"
+        mode "rw"
+    }
+    - {
+        path "/srv/m1"
+        mode "ro"
+    }
+    - {
+        path "/srv/m2"
+        mode "rw"
+    }
+    - {
+        path "/srv/m3"
+        mode "ro"
+    }
+    - {
+        path "/srv/m4"
+        mode "rw"
+    }
+    - {
+        path "/srv/m5"
+        mode "ro"
+    }
+    - {
+        path "/srv/m6"
+        mode "rw"
+    }
+    - {
+        path "/srv/m7"
+        mode "ro"
+    }
+    - {
+        path "/srv/m8"
+        mode "rw"
+    }
+    - {
+        path "/srv/m9"
+        mode "ro"
+    }
+    - {
+        path "/srv/m10"
+        mode "rw"
+    }
+    - {
+        path "/srv/m11"
+        mode "ro"
+    }
+}
+(list)home-files {}
+ssh {
+    port 0
+}
+timeouts {
+    boot 180
+    stop 60
+}

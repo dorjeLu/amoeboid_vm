@@ -1,0 +1,13 @@
+{
+  "user": "u",
+  "uid": 2,
+  "gid": 2,
+  "base_nix_config": "default",
+  "default_mounts": [],
+  "home_files": [],
+  "ssh_port": 65535,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

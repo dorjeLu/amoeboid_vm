@@ -1,0 +1,702 @@
+[
+  {
+    "name": "empty",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": []
+    }
+  },
+  {
+    "name": "single",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "already_ordered",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a/b",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a/b",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "child_before_parent",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a/b",
+          "mode": "ro"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a/b",
+          "mode": "ro"
+        }
+      ]
+    }
+  },
+  {
+    "name": "siblings_sorted",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/z",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/z",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "componentwise_not_stringwise",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a-b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a/b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a.c",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a/b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a-b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a.c",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unicode_codepoint_order",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/z",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\u00e9",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\uff5e",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\ud83d\ude80",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/z",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\u00e9",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\uff5e",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\ud83d\ude80",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "modes_kept",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/b",
+          "mode": "ro"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/b",
+          "mode": "ro"
+        }
+      ]
+    }
+  },
+  {
+    "name": "deep_nesting",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/a/b/c/d",
+          "mode": "rw"
+        },
+        {
+          "path": "/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/a/b/c",
+          "mode": "rw"
+        },
+        {
+          "path": "/a/b",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/a/b",
+          "mode": "rw"
+        },
+        {
+          "path": "/a/b/c",
+          "mode": "rw"
+        },
+        {
+          "path": "/a/b/c/d",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside_home_is_fine",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/home/u/dev",
+          "mode": "rw"
+        },
+        {
+          "path": "/home/u2",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/home/u/dev",
+          "mode": "rw"
+        },
+        {
+          "path": "/home/u2",
+          "mode": "rw"
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate_same_mode",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/a",
+          "kind": "duplicate"
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate_other_mode",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "ro"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/a",
+          "kind": "duplicate"
+        }
+      ]
+    }
+  },
+  {
+    "name": "triplicate",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/a",
+          "kind": "duplicate"
+        },
+        {
+          "path": "/srv/a",
+          "kind": "duplicate"
+        }
+      ]
+    }
+  },
+  {
+    "name": "not_a_directory",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/file",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": [
+        "/srv/file"
+      ]
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/file",
+          "kind": "not_a_directory"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hides_home_exact",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/home/u",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/home/u",
+          "kind": "hides_home",
+          "home": "/home/u"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hides_home_parent",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/home",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/home",
+          "kind": "hides_home",
+          "home": "/home/u"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hides_home_root",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/",
+          "kind": "hides_home",
+          "home": "/home/u"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hides_first_of_two_homes",
+    "input": {
+      "protected": [
+        "/home/u",
+        "/home/v"
+      ],
+      "mounts": [
+        {
+          "path": "/home",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/home",
+          "kind": "hides_home",
+          "home": "/home/u"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hides_second_home_only",
+    "input": {
+      "protected": [
+        "/home/u",
+        "/srv/v"
+      ],
+      "mounts": [
+        {
+          "path": "/srv",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv",
+          "kind": "hides_home",
+          "home": "/srv/v"
+        }
+      ]
+    }
+  },
+  {
+    "name": "all_problems_at_once",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/a",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/file",
+          "mode": "rw"
+        },
+        {
+          "path": "/home",
+          "mode": "rw"
+        },
+        {
+          "path": "/ok",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": [
+        "/srv/file"
+      ]
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/a",
+          "kind": "duplicate"
+        },
+        {
+          "path": "/srv/file",
+          "kind": "not_a_directory"
+        },
+        {
+          "path": "/home",
+          "kind": "hides_home",
+          "home": "/home/u"
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate_and_missing",
+    "input": {
+      "protected": [
+        "/home/u"
+      ],
+      "mounts": [
+        {
+          "path": "/srv/x",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/x",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": [
+        "/srv/x"
+      ]
+    },
+    "output": {
+      "errors": [
+        {
+          "path": "/srv/x",
+          "kind": "not_a_directory"
+        },
+        {
+          "path": "/srv/x",
+          "kind": "duplicate"
+        }
+      ]
+    }
+  },
+  {
+    "name": "no_protected",
+    "input": {
+      "protected": [],
+      "mounts": [
+        {
+          "path": "/",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv",
+          "mode": "rw"
+        }
+      ],
+      "not_dirs": []
+    },
+    "output": {
+      "ok": [
+        {
+          "path": "/",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv",
+          "mode": "rw"
+        }
+      ]
+    }
+  }
+]

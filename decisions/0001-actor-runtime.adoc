@@ -1,0 +1,286 @@
+= Decision 0001: actor runtime, message protocol and persistence
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+Status: accepted, 2026-10-29. This is the design of record for the Rust implementation of amoeboid; later records in this directory amend it, they do not restate it.
+
+Scope: the process model, the message protocol, ownership, persistence, formats and the build order. Operator-facing behaviour stays in `README.adoc`; the invariants that must survive any change are restated at the end.
+
+== Context
+
+The launcher manages external resources: a Nix build output, directories shared into an untrusted guest, a set of host processes, a port, and host-owned records. Every one of those outlives a single command invocation, and some outlive the process that created them. A design that treats each command as a stateless transaction has to reconstruct that world from the filesystem under exclusion and prove facts about it that keep changing. That is the assumption this record replaces.
+
+Two things stay from the earlier work: the value-level algebra (validation, total constructors, exhaustive errors) and the effect adapters, which were the expensive and correct parts. The orchestration layer, the configuration format and the lock protocol do not.
+
+== Decision
+
+* The unit of state is a **VM actor**. It owns one VM's state and is the only thing that transitions it. It is spawned by a single **runtime actor** (the root), never by a client.
+* There is **one runtime per user**, identified by a `flock` on `<data>/daemon.lock`. The kernel releases it when the runtime dies, so nothing is ever cleaned up by hand and nothing needs maintaining.
+* Clients (`amoeboid` CLI, or a host service that embeds the library) are **sources of messages**. The runtime owns every operation; a client's lifetime affects only its subscription, never the operation.
+* State transitions are a **pure fold** over the actor's own state: `step(&mut VmCore, Msg) -> Vec<Effect>`. Effects are executed outside the fold and report back as messages. ractor carries the mailboxes; it never appears inside the fold.
+* Durable state is an **append-only journal** in SQLite plus periodic snapshots, written through exactly one connection per process. There is no event sourcing and no saga DAG.
+* Recovery is **verification, not replay**: the journal is audited against the world and the first broken step is reported; executing anything is a separate, explicit decision.
+* The protocol is **serde-ready and versioned** from the first commit.
+
+== Runtime model
+
+[source]
+----
+root actor (registry, accept loop, reconcile on acquire)
+ ├── journal facade (one tokio-rusqlite connection, background thread = the single writer)
+ └── VM actor per name (pure core + effects)
+       ├── build / host key / guest delivery (component calls)
+       ├── virtiofsd × shares (child processes)
+       └── qemu runner (child process)
+
+clients: unix socket ── Msg ──▶ root ── routed to VM actor
+                            ◀── Reply / Subscribe stream
+----
+
+The root does no work beyond routing, registry bookkeeping and supervision. The socket listener is a task that sends `ClientConnected` / `ClientMessage` into the root; it never touches VM state and never blocks on a client. Operations that are not about one VM (`list`, `config`) are answered by the root, which keeps no VM state beyond the registry. VM actors are the only writers of their own rows. Components (filesystem, processes, Nix, ssh, QMP, session, clock) are injectable capabilities; the journal is not a component and is not reachable from them.
+
+One actor per VM exists because the fold needs a single writer, not because of concurrency aesthetics. Two actors for one VM is a bug the registry prevents in-process and the generation fence prevents everywhere else.
+
+== Ownership
+
+`<data>/daemon.lock` is opened with `O_CREAT|O_NOFOLLOW`, locked `LOCK_EX|LOCK_NB`, and never deleted.
+
+* Lock acquired: this process is the runtime. It writes `pid`, `starttime`, `boot_id` and its binary version into the file as diagnostics, opens the journal, reconciles, then binds the socket.
+* `EWOULDBLOCK`: a runtime exists. The process reads the identity, connects to the socket and runs as a client. If the socket is missing, that is a typed `RuntimeUnreachable { pid, boot_id, hint }`, not a second runtime.
+
+`starttime` from `/proc/PID/stat` counts ticks since boot, so identity is `pid + starttime + program + boot_id`. Without `boot_id`, a stale record that survives a reboot can appear alive because a different process reused both numbers.
+
+The library never spawns a runtime by itself. The builder takes a policy: `Own` (become the runtime, fail if one exists), `Attach` (client only), `AttachOrOwn` (the CLI's choice). A host service that embeds the library and wants the runtime simply asks for `Own`; daemonization stays the host service's business.
+
+== Messages and protocol
+
+All state changes enter as messages. Clients carry an identity and a monotonic per-client sequence; the runtime dedupes on `(client_id, client_seq)` so a retry after a dropped connection is a no-op.
+
+[source,rust]
+----
+Hello   { protocol_version, client_version, client_id }
+Welcome { protocol_version, runtime_version, runtime_id, boot_id }
+Msg::Request  { client_seq, op_id: Option<OpId>, body }
+Msg::Cancel   { op_id }
+Msg::Subscribe{ op_id, from: Option<Seq> }
+Msg::Reply    { reply_to, result }
+Msg::Event    { op_id, seq, event }
+----
+
+Rules:
+
+* Additive changes only within a major `protocol_version`; a mismatch is a typed refusal naming `amoeboid daemon restart`.
+* Unknown message variants are refused, never ignored.
+* Every field is refined on decode; the message stream is a boundary and the socket is same-uid only (`SO_PEERCRED`, `0700` directory).
+* Disconnecting is not cancellation. Cancellation is `Msg::Cancel`, and only the runtime decides what that means for an operation in flight.
+* Progress is derived from the journal, so `Subscribe { op_id, from }` can resume after a client restart. The socket is transport; `steps` is the stream.
+* Operations are addressable by `OpId` for the lifetime of the runtime; an operation that outlives a client simply keeps a subscription-less existence.
+
+== State machine
+
+[source,rust]
+----
+enum VmState {
+    Absent,
+    Starting { generation, step: StepId },
+    Running  { generation, qemu: ProcIdentity, helpers: Vec<(ShareRole, ProcIdentity)>, ssh: LoopbackPort },
+    Stopping { generation, reason: StopReason },
+    Stopped  { last: ProcIdentity },
+    Failed   { generation, reason: Failure, unwind: Vec<StepRef> },
+    Indeterminate { generation, broken: StepRef },
+}
+----
+
+Transitions are total over `(state, message)`; an impossible pairing is a `Refused` value, not a panic. `Refused` is how "duplicate start", "stop while stopping" and "repair on absent" are represented: the registry is a state machine, not a held resource.
+
+== Persistence
+
+One SQLite connection per process, owned by the journal facade and reached through `tokio-rusqlite`; its background thread is the single writer. A second connection in the same process is a bug. WAL, `busy_timeout`, `synchronous=NORMAL` are set at open; `PRAGMA user_version` carries the schema version.
+
+[source,sql]
+----
+CREATE TABLE vms (
+  name       TEXT PRIMARY KEY,
+  uuid       TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  owner      TEXT,                      -- runtime instance, NULL when nobody controls it
+  state      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE steps (
+  vm         TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  seq        INTEGER NOT NULL,
+  op         TEXT NOT NULL,             -- operation that caused the step
+  plan       TEXT NOT NULL,             -- decided plan, JSON
+  expect     TEXT NOT NULL,             -- witness the step must leave, JSON
+  outcome    TEXT,                      -- NULL while in flight
+  PRIMARY KEY (vm, generation, seq)
+) STRICT;
+
+CREATE INDEX steps_by_op ON steps (op, vm, generation, seq);
+
+CREATE TABLE snapshots (
+  vm         TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  seq        INTEGER NOT NULL,
+  state      TEXT NOT NULL,             -- actor state, JSON
+  PRIMARY KEY (vm, generation, seq)
+) STRICT;
+
+CREATE TABLE intake (
+  client_id  TEXT NOT NULL,
+  client_seq INTEGER NOT NULL,
+  op_id      TEXT NOT NULL,
+  PRIMARY KEY (client_id, client_seq)
+) STRICT;
+----
+
+`steps.op` is what makes `Subscribe { op_id, from }` answerable from the journal alone: the operation identity is written with the intent, so progress survives the actor and the client. `steps` is deliberately not `WITHOUT ROWID`: the outcome is written by a later update. Compaction never trims below the oldest retained snapshot, or verification from a given `seq` becomes impossible. Persisted state strings are the snake-case form of `VmState`, so `vms.state` is `starting`, `running`, and so on.
+
+The three statements that carry the correctness argument are the claim, the fenced write and the idempotent append. They use `RETURNING` and a row count, never `changes()`, which makes a future Turso backend a swap rather than a rewrite.
+
+[source,sql]
+----
+-- claim (one transaction: BEGIN IMMEDIATE)
+UPDATE vms SET owner = ?, generation = generation + 1, state = 'starting', updated_at = ?
+ WHERE name = ? AND (state IN ('stopped','failed') OR owner IS NULL)
+RETURNING generation;
+
+-- fenced write; 0 rows means the actor was superseded
+UPDATE vms SET state = ?, updated_at = ?
+ WHERE name = ? AND owner = ? AND generation = ?
+RETURNING state;
+
+-- idempotent step append; 0 rows means already applied
+INSERT INTO steps (vm, generation, seq, plan, expect) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (vm, generation, seq) DO NOTHING
+RETURNING seq;
+----
+
+The database path is a builder input, refined to an absolute host path at the boundary, refused inside any guest-writable directory, and created 0600. The handle is not exposed: the public surface is a selector (`Persistence::{Sqlite(path), Memory}`), and the store trait stays crate-private so no outside implementation can weaken the claim or fence semantics. Its guarantees are tested by one conformance suite run against every backend, including the in-memory fake.
+
+== Effects and witnesses
+
+Every effect declares the observable state it must leave behind. "File exists" is not a witness; content hash and mode are. "Process alive" is not a witness; `pid + starttime + program + boot_id` is. "Socket exists" is not a witness; a successful connect is.
+
+Effects fall into three classes, and the class decides what a duplicate does:
+
+[cols="1,2"]
+|===
+|Class |Examples and rule
+|Idempotent |nix build, config copy, guest delivery, record write. Duplicate execution costs time, not correctness; the witness decides if it happened.
+|Self-arbitrating |qemu binding `control.sock`, virtiofsd binding `dN.sock`, the forwarded port. A second actor fails at the kernel object, which is the exclusive create; no lock file is involved.
+|Needs reaping |anything whose evidence the actor itself destroyed. Recorded as such at construction (`Unverifiable { reason }`), so verification reports it instead of assuming success.
+|===
+
+Ordering: append the intent, commit, run the effect, send `EffectDone { seq, outcome }` back to the actor, which appends the outcome and advances. Failure of the append aborts the step before the effect; a crash between the two leaves an intent without an outcome, which is exactly the `Incomplete` case below. The journal is never written by an effect task.
+
+== Verification, not replay
+
+Verification has no preconditions on the world, so it is the only thing that may run on an arbitrary state. It is read-only and safe inside `status`.
+
+[source,rust]
+----
+enum StepVerdict {
+    Holds,
+    Missing     { witness: Witness },
+    Diverged    { expected: Witness, found: Observed },
+    Unverifiable{ reason: NotObservable },
+    Incomplete,                          // intent without outcome
+    Superseded  { generation: u64 },     // a dead incarnation, not a failure
+}
+
+struct Audit { steps: Vec<StepVerdict>, first_broken: Option<Seq>, truncated: bool }
+----
+
+* Verification stops attributing at the first non-`Holds`; later steps are `Indeterminate`, because they rest on a broken predecessor.
+* `Incomplete` with a holding witness means the effect happened and only the outcome write was lost; `Incomplete` with a missing witness means it did not happen. The audit reports both; completing the record is a mutation and belongs to `reconcile`.
+* `remedy(&Audit) -> Remedy::{Resume, Restart, StopAndReap, Repair, Attach, Manual}` is pure and table-tested. Executing a remedy is a separate command. No effect runs that the audit did not bless.
+* Two passes, because they answer different questions: `audit` compares the journal with the world (did our story hold), `reconcile` compares the world with the registry (does the world match any story, including steps that died before their intent was written).
+
+== Reconcile on acquire
+
+Taking ownership is a reconciler activation with no input: full scan, no "what changed" shortcut.
+
+For each row with an owner: verify qemu and helpers by identity; adopt (bump `generation`, set `owner`, continue the VM), or reap (signal the verified leftovers, clear the runtime dir, mark `failed`). Then sweep for processes whose command line names a runtime directory that no row knows, which covers a crash between spawn and journal append. Reaping is always identity-based; a row's state is never trusted for liveness.
+
+Detached VMs survive a runtime restart by adoption. A second CLI invocation is a client. Nothing about either requires a lease.
+
+== Formats
+
+* `run_config.toml` for the operator's configuration.
+* JSON for host-owned records and journal payloads: `run`, the actor snapshot, steps, intake.
+* Guest-facing state files keep their existing line formats (`mounts` is tab-separated and read by a guest shell loop, `hostname` and `term` are single lines, `amoeboid-qemu-args` is word-split by the runner). They are part of the Nix/Rust contract listed in `contract.json`; changing one means changing `base.nix` and the contract version.
+* KDL is not used. The existing parser survives only as a one-time migrator for old `run_config.kdl` files, then it and its corpus are deleted.
+
+Serde rules: messages and journal payloads are owned (`'static`), state uses `BTreeMap` and `Vec` so iteration order is part of the value, durations serialize as integers, and every payload has a version field. Goldens test values, not raw JSON text.
+
+== Ports and adapters
+
+Components are narrow traits in `ports/` with real implementations in `adapters/`, wired by a builder: `Amoeboid::builder().persistence(..).fs(..).procs(..).build()?`.
+
+* Dynamic dispatch (`Arc<dyn Fs>`) at the component boundary: the actor graph is dynamic and monomorphized generics were the wrong tool for it. Pure code keeps static dispatch.
+* Adapters remain usable as free functions; the trait exists to swap implementations, not to decorate call sites.
+* The builder is the only place environment, identity and host paths are read.
+* The journal is not a component. Neither is the runtime.
+
+Console: the runtime never hands a client terminal to qemu. qemu's serial goes to the console log, a client may tail it through the sanitiser, and the CLI prints the ssh connection command once the VM is ready. There is no pty relay and no terminal handover; "foreground" means the client waits for readiness, not that it owns the process. Ctrl-C at the client cancels its request, and powering the VM off is `stop` (or an explicit cancel policy), never a side effect of a signal reaching qemu's tty.
+
+== Salvage
+
+[cols="1,2"]
+|===
+|Kept |Why
+|Validation and value objects (`domain`, `refined`) |the value-level algebra is what the design wants; it is not extended for its own sake
+|`layout` (paths, socket bound, flake-safe names) |pure, tested, unchanged in spirit
+|`plan` (argv, qemu args, mounts table, host.nix, ssh argv) plus its goldens |byte-exact construction is cheap to keep and expensive to redo
+|Effects: atomic write and tree swap, guest delivery via `openat2`, process identity and pidfd signalling, ssh key staging, QMP, system probes |the adapters are the correct part of the earlier work
+|Console sanitiser, contract model and the Nix contract output |unchanged invariants
+|Behaviour rules from the records codecs |re-expressed as JSON, same strictness
+|===
+
+Not kept: the per-VM `flock` and its fd-inheritance protocol, the `Ports` trait with its associated-type bundle and `World`, the generic observe/decide/execute rounds, the KDL layer, and the "a snapshot is a proof" treatment of observed values. Observed types survive as validation at the message boundary, where the world is actually looked at.
+
+== Build order
+
+Each slice ends with a command that runs against a scratch VM. A slice that only adds abstractions is not finished.
+
+. Runtime skeleton: builder, journal facade, registry, root actor, `Ping`; single-spawn test.
+. Local start: build, runtime files, helpers, qemu, readiness, run record, ssh command printed. No protocol, no daemon, no config file.
+. Stop and status: identity-based signalling, QMP powerdown, reaping of leftovers.
+. Journal: intents, outcomes, snapshots, audit, reconcile on acquire.
+. Protocol and daemon: socket, handshake, version, cancel, subscribe, client mode, adopt.
+. Config and presets: TOML, base resolution, rebase, guest delivery, linger.
+. CLI surface: every command, rendering, exit codes, help.
+
+== Accepted costs
+
+* **Console**: no terminal handover; the operator uses ssh. Accepted in exchange for removing the pty and process-handover machinery.
+* **Daemon lifecycle**: a long-lived process can be stale after an upgrade. The protocol version and an explicit `daemon restart` are the answer; restarting with VMs running needs a documented policy.
+* **Multi-process writers**: a process that opens the journal without going through the runtime is an accepted risk for now, to be prevented by a separate mechanism rather than by the schema.
+* **Verification depends on witness strength**: a weak witness produces a green audit that means little. The witness types are therefore part of the design, not an afterthought.
+
+== Invariants
+
+1. One runtime per user, defined by the `daemon.lock` flock; the file is never deleted, and its contents are diagnostic only.
+2. The runtime owns every operation; clients are message sources, and their disconnection affects only their subscription.
+3. One journal connection per process; only the journal facade writes. Effects report outcomes as messages.
+4. Every client message is idempotent under retry, keyed by `(client_id, client_seq)`.
+5. Liveness comes from the OS (`pid + starttime + program + boot_id`); the journal holds intent, never fact.
+6. The guest is untrusted: guest-writable paths are written only through `GuestDelivery` and never read back to decide anything.
+7. A proof about a past observation does not authorise an effect; effects re-check the world or fail with a typed error.
+8. Read-only shares are enforced by `virtiofsd --readonly`; ssh argv only from `plan::ssh_argv`; guest console bytes reach a terminal only through the sanitiser; everything interpolated into generated Nix is validated or escaped.
+9. No `unsafe`, no `unwrap`/`expect`/`panic` outside tests, no blanket `#[allow]`.
+10. No effect runs during recovery that the audit did not bless.
+
+== Open questions
+
+* Frame format on the socket: length-prefixed JSON (proposed) or JSON lines, and the maximum frame size.
+* Snapshot cadence: every N steps, on every state change, or only at operation boundaries.
+* Whether `daemon restart` drains running VMs or refuses while any exist.
+* Whether the journal's `intake` dedupe table is trimmed with the journal or kept for the lifetime of the state directory.
+* When a second `Persistence` backend (Turso) is added, and whether the conformance suite is enough to certify it.

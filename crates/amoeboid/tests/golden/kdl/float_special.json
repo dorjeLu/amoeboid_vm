@@ -1,0 +1,28 @@
+{
+  "dict": [
+    [
+      "neg_zero",
+      {
+        "float": "-0.0"
+      }
+    ],
+    [
+      "nan",
+      {
+        "float": "nan"
+      }
+    ],
+    [
+      "inf",
+      {
+        "float": "inf"
+      }
+    ],
+    [
+      "ninf",
+      {
+        "float": "-inf"
+      }
+    ]
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "mounts": [
+    {
+      "path": "/home/u/dev",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/ref",
+      "mode": "ro"
+    }
+  ],
+  "ssh_port": 40022
+}

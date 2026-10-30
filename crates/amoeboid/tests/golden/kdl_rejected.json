@@ -1,0 +1,74 @@
+[
+  {
+    "name": "unbalanced_brace",
+    "text": "a {\n"
+  },
+  {
+    "name": "unterminated_string",
+    "text": "a \"x\n"
+  },
+  {
+    "name": "bare_keyword_true",
+    "text": "a true\n"
+  },
+  {
+    "name": "property",
+    "text": "a key=\"v\"\n"
+  },
+  {
+    "name": "two_arguments",
+    "text": "a 1 2\n"
+  },
+  {
+    "name": "value_and_children",
+    "text": "a 1 {\n    b 2\n}\n"
+  },
+  {
+    "name": "duplicate_key",
+    "text": "a 1\na 2\n"
+  },
+  {
+    "name": "duplicate_nested_key",
+    "text": "o {\n    a 1\n    a 2\n}\n"
+  },
+  {
+    "name": "other_type_annotation",
+    "text": "(u8)a 1\n"
+  },
+  {
+    "name": "annotated_value",
+    "text": "a (u8)1\n"
+  },
+  {
+    "name": "list_with_argument",
+    "text": "(list)l 1\n"
+  },
+  {
+    "name": "list_item_wrong_name",
+    "text": "(list)l {\n    x 1\n}\n"
+  },
+  {
+    "name": "list_item_with_property",
+    "text": "(list)l {\n    - k=1\n}\n"
+  },
+  {
+    "name": "kdl_v1_syntax",
+    "text": "a true\nb null\n"
+  },
+  {
+    "name": "unclosed_block_comment",
+    "text": "/* never closed\n"
+  },
+  {
+    "name": "bad_escape",
+    "text": "a \"\\q\"\n"
+  },
+  {
+    "name": "bad_unicode_escape",
+    "text": "a \"\\u{110000}\"\n"
+  },
+  {
+    "name": "raw_control_in_string",
+    "text": "a \"x\u0001y\"\n"
+  }
+]

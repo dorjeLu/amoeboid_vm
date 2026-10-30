@@ -1,0 +1,833 @@
+kdl.duplicate-key
+  message: duplicate key "a"
+  hint: remove or rename one of the entries
+kdl.int.smallest
+  message: integer -170141183460469231731687303715884105728 can't be read back from KDL text
+  hint: use a larger integer
+kdl.parse.syntax
+  message: invalid KDL: Expected identifier string (line 1, column 3)
+  hint: fix the syntax at the reported place
+kdl.parse.duplicate-key
+  message: document: duplicate key "a"
+  hint: remove or rename one of the entries
+kdl.parse.properties
+  message: document > a: properties (x, y) aren't supported
+  hint: write each setting as its own node
+kdl.parse.unknown-annotation
+  message: document > a: unknown type annotation (u8)
+  hint: remove the annotation; only (list) is used
+kdl.parse.list-arguments
+  message: document > a: a (list) node takes children, not arguments
+  hint: put the items in a block of '-' nodes
+kdl.parse.list-item-name
+  message: document > a[0]: list items must be named '-', got "x"
+  hint: name every list item '-'
+kdl.parse.argument-count
+  message: document > a: expected one value, got 2
+  hint: give the node one value, or a block of children
+kdl.parse.value-and-children
+  message: document > a: a node has either one value or children, not both
+  hint: keep either the value or the children
+kdl.parse.annotated-value
+  message: document > a: type-annotated values aren't supported
+  hint: remove the annotation from the value
+kdl.parse.int-range
+  message: document > a: integer -170141183460469231731687303715884105728 can't be read back from KDL text
+  hint: use a larger integer
+kdl.parse.too-deep
+  message: line 3, column 7: nested deeper than 16 levels
+  hint: flatten the nested blocks, comments or '/-' marks
+config.missing
+  message: missing
+  hint: add the key to the file
+config.not-string
+  message: expected a string, got an integer
+  hint: write the value as a quoted string
+config.not-integer
+  message: expected an integer, got a boolean
+  hint: write the value as a whole number
+config.not-list
+  message: expected a (list) node, got a string
+  hint: write the items as a block of '-' nodes under a (list) node
+config.not-block
+  message: expected a block, e.g. ssh { port 0 }, got an integer
+  hint: write it as ssh { port 0 }
+config.out-of-range
+  message: -1 is outside 0..4294967295
+  hint: write the value as a whole number
+config.bad-choice
+  message: expected one of rw, ro, got "rx"
+  hint: use one of: rw, ro
+config.unknown-key
+  message: unknown key "typo"; known: base-nix-config, default-mounts, gid, home-files, home-storage, linger, ssh, timeouts, uid, user
+  hint: remove the key, or check its spelling
+config.user
+  message: bad account name: root can't be used in the guest
+  hint: run amoeboid as an unprivileged user
+config.uid
+  message: bad user id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+config.gid
+  message: bad group id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+config.base
+  message: can't expand ~bob: only ~ and ~/... are supported
+  hint: write the path in full, or start it with ./
+config.mount-path
+  message: empty path
+  hint: give a directory such as ~/dev/app, ./app or /srv/app
+config.mount-resolve
+  message: can't expand ~bob: only ~ and ~/... are supported
+  hint: write the path in full, or start it with ./
+config.home-file
+  message: bad home file path: it is empty
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+config.port
+  message: bad ssh port: 22 is below 1024
+  hint: use 0 (pick a free port) or a port from 1024 to 65535
+config.seconds
+  message: bad seconds: 0 is not a duration
+  hint: use a whole number of seconds from 1 to 86400
+config.syntax
+  message: invalid KDL: line 1
+  hint: fix the file, or delete it to start over
+config.invalid
+  message: invalid configuration: uid: missing; unknown key "typo"; known: base-nix-config, default-mounts, gid, home-files, home-storage, linger, ssh, timeouts, uid, user
+  hint: fix the file, or delete it to start over
+layout.home-unset
+  message: $HOME is unset or empty
+  hint: run amoeboid from a login session, with $HOME an absolute path
+layout.not-unicode
+  message: $TMPDIR is not valid UTF-8
+  hint: set $TMPDIR to an absolute UTF-8 path without '..', or unset it
+layout.bad-path
+  message: can't use $XDG_DATA_HOME="/a/../b": bad path: component 1 is '..'
+  hint: set $XDG_DATA_HOME to an absolute UTF-8 path without '..', or unset it
+layout.socket-path-too-long
+  message: can't place sockets under /tmp/long: the longest socket path would be 108 bytes, more than 107
+  hint: set $XDG_RUNTIME_DIR (or $TMPDIR) to a shorter directory
+layout.bad-data-dir
+  message: can't use /srv/a?b/amoeboid as the data dir: bad flake path: '?' at offset 6 would start a URL query
+  hint: set $XDG_DATA_HOME to a directory whose path uses only letters, digits, '/' and any of !$&'()*+,-.:;=@_~
+config-file.read
+  message: can't read /cfg/run_config.kdl: the operation was aborted
+  hint: run the command again
+config-file.not-utf8
+  message: /cfg/run_config.kdl: the file isn't UTF-8 text
+  hint: fix the file, or delete it to start over
+config-file.invalid
+  message: /cfg/run_config.kdl: invalid configuration: user: expected a string, got an integer; uid: missing; gid: missing
+  hint: fix the file, or delete it to start over
+config-file.probe
+  message: can't read /cfg/run_config.kdl: the operation was aborted
+  hint: run the command again
+config-file.write
+  message: can't read /cfg/run_config.kdl: the operation was aborted
+  hint: run the command again
+home-file.missing
+  message: not copying ~/.gitconfig into the VM: no such regular file
+  hint: create the file, or remove it from `home-files` in the config
+host-key.pin
+  message: can't write /d/proj/ssh/known_hosts: no storage space
+  hint: free disk space and try again
+base.source
+  message: /p: not a NixOS config dir (no flake.nix)
+  hint: give a directory with a flake.nix, or a preset (see `amoeboid presets`)
+base.preset-missing
+  message: no preset named work: /c/amoeboid/nix_presets/work doesn't exist
+  hint: list the presets with `amoeboid presets`, or give a directory with --base-nix-config
+base.default-preset-missing
+  message: the default preset doesn't exist: /c/amoeboid/nix_presets/default
+  hint: copy the reference NixOS config (the nix/ directory of the amoeboid sources) to /c/amoeboid/nix_presets/default, or give a directory with --base-nix-config
+nix-config.probe
+  message: can't inspect /c/nix_presets/default: the operation was aborted
+  hint: run the command again
+nix-config.non-atomic-replace
+  message: /d/proj/nix was replaced in two steps: the filesystem can't swap directories
+  hint: keep the data directory on a filesystem that can swap directories (ext4, xfs, btrfs, tmpfs)
+run-file.probe
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+run-file.read
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+run-file.not-utf8
+  message: /d/proj/run: the file isn't UTF-8 text
+  hint: delete the file once no process of the VM is left
+run-file.invalid
+  message: /d/proj/run: vm: missing
+  hint: delete the file once no process of the VM is left
+run-file.write
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+mounts-file.probe
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+mounts-file.read
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+mounts-file.not-utf8
+  message: /d/proj/mounts: the file isn't UTF-8 text
+  hint: fix the file, or delete it to forget the last shares
+mounts-file.invalid
+  message: /d/proj/mounts: line 2: expected 3 tab-separated fields, found 1
+  hint: fix the file, or delete it to forget the last shares
+mounts-file.write
+  message: can't read /d/proj/run: permission denied
+  hint: fix the permissions of the path, or run as its owner
+qemu-arg.empty
+  message: bad qemu argument: it is empty
+  hint: the runner splits its arguments at whitespace; give one word per argument
+qemu-arg.whitespace
+  message: bad qemu argument: whitespace at offset 1
+  hint: the runner splits its arguments at whitespace; give one word per argument
+qmp.greeting.not-json
+  message: qemu's greeting isn't JSON
+  hint: check that the control socket belongs to this VM's qemu
+qmp.greeting.not-qmp
+  message: qemu's greeting isn't a QMP greeting
+  hint: check that the control socket belongs to this VM's qemu
+qmp.reply.not-json
+  message: qemu's reply isn't JSON
+  hint: check that the control socket belongs to this VM's qemu
+qmp.reply.not-message
+  message: qemu's reply is neither a return, an error nor an event
+  hint: check that the control socket belongs to this VM's qemu
+qmp.reply.bad-error
+  message: qemu's error reply has no class and description
+  hint: check that the control socket belongs to this VM's qemu
+qmp.reply.unknown-class
+  message: qemu's error reply has an unknown class "Odd"
+  hint: check that the control socket belongs to this VM's qemu
+delivery.blocked
+  message: can't open /d/vm/guest/home: other error
+  hint: something inside the VM may have replaced a directory there with a symlink; inspect it and remove the offending entry
+delivery.io
+  message: can't write /d/vm/guest/mounts: no storage space
+  hint: free disk space and try again
+delivery.aborted
+  message: can't write /d/vm/guest/mounts: the operation was aborted
+  hint: run the command again
+fs.io
+  message: can't write /data/vm/nix/a/b.nix: no storage space
+  hint: free disk space and try again
+fs.too-deep
+  message: can't copy /presets/default: it nests deeper than 64 levels
+  hint: use a shallower directory tree
+fs.bad-name
+  message: can't read /data/proj/nix/sub/�.nix: it isn't a valid file name (not UTF-8)
+  hint: rename the file to a UTF-8 name
+fs.aborted
+  message: can't write /data/run_config.kdl: the operation was aborted
+  hint: run the command again
+nix.spawn
+  message: can't run nix: permission denied
+  hint: check that nix is installed and runnable
+procs.io
+  message: can't read the executable of process 42: permission denied
+  hint: check that /proc is mounted and readable
+procs.no-such-process
+  message: no process 42 is running
+  hint: start the VM again
+procs.stat
+  message: can't read the status of process 42: bad process status line: it has no (name) part
+  hint: check that /proc is mounted and readable
+procs.program
+  message: can't name the program of process 42: bad program name: it is empty
+  hint: check that /proc is mounted and readable
+procs.not-unicode
+  message: can't name the program of process 42: its path isn't UTF-8
+  hint: run the program from a path made of UTF-8 text
+procs.aborted
+  message: can't inspect process 42: the operation was aborted
+  hint: run the command again
+spawn.lock
+  message: can't hand the lock to the process: can't lock /d/proj/lock: the operation was aborted
+  hint: stop the VM first, then try again
+spawn.log
+  message: can't open the log /d/proj/console.log: entity not found
+  hint: check the permissions of the VM's data directory
+spawn.exec
+  message: can't start the process: entity not found
+  hint: check that the program exists and is executable
+spawn.identify
+  message: can't identify the process: no process 42 is running
+  hint: check that /proc is mounted and the program stays running
+spawn.exited
+  message: the process ended at once (exit status 1)
+  hint: run the program by hand to see why it stops
+qmp.connect
+  message: can't connect to qemu on /run/user/1000/amb_vm/control.sock: connection refused
+  hint: check that the VM is running; list VMs with `amoeboid list`
+qmp.io
+  message: can't talk to qemu while waiting for the greeting: connection refused
+  hint: the VM may be shutting down already; check `amoeboid list`
+qmp.closed
+  message: qemu closed the control socket while waiting for the reply to qmp_capabilities
+  hint: the VM may be shutting down already; check `amoeboid list`
+qmp.too-long
+  message: qemu sent a line of more than 65536 bytes while waiting for the greeting
+  hint: check that the control socket belongs to this VM's qemu
+qmp.greeting
+  message: qemu's greeting isn't a QMP greeting
+  hint: check that the control socket belongs to this VM's qemu
+qmp.reply
+  message: bad reply to system_powerdown: qemu's reply is neither a return, an error nor an event
+  hint: check that the control socket belongs to this VM's qemu
+qmp.refused
+  message: qemu refused system_powerdown: GenericError: no power button
+  hint: check the VM's console for why qemu can't power off
+qmp.timeout
+  message: qemu didn't answer in 5 seconds while waiting for the reply to system_powerdown
+  hint: the VM may be shutting down already; check `amoeboid list`
+session.spawn
+  message: can't run loginctl: entity not found
+  hint: install systemd's loginctl, or run `loginctl enable-linger` as root
+session.failed
+  message: loginctl enable-linger failed: exit status 1
+  hint: run `loginctl enable-linger USER` yourself and try again
+session.aborted
+  message: can't check linger: the operation was aborted
+  hint: run the command again
+ssh.key.io
+  message: can't rename /d/proj/ssh/ssh_host_ed25519_key.pub: permission denied
+  hint: fix the permissions of the path, or run as its owner
+ssh.key.spawn
+  message: can't run ssh-keygen: entity not found
+  hint: install OpenSSH on the host
+ssh.key.failed
+  message: ssh-keygen failed: exit status 1
+  hint: check the ssh-keygen message above
+ssh.key.invalid
+  message: can't use the host key in /d/proj/ssh/ssh_host_ed25519_key.pub: unsupported host key type "ssh-rsa": only ssh-ed25519 is used
+  hint: delete the VM's ssh directory so a new ed25519 key is generated
+ssh.key.aborted
+  message: can't generate the host key: the operation was aborted
+  hint: run the command again
+ssh.port.bind
+  message: can't find a free port: address not available
+  hint: choose a port with `ssh.port` in the config, or free local ports
+ssh.port.unusable
+  message: can't find a free port: bad port: 0 is not a port number
+  hint: choose a port with `ssh.port` in the config, or free local ports
+ssh.banner.connect
+  message: can't connect to port 2222: connection refused
+  hint: see the console log for why sshd isn't up
+ssh.banner.read
+  message: can't read from port 2222: connection reset
+  hint: see the console log for why sshd isn't up
+ssh.banner.timeout
+  message: nothing answered on port 2222 within 2 seconds while waiting for the banner
+  hint: see the console log for why sshd isn't up
+ssh.banner.closed
+  message: port 2222 closed the connection without a banner
+  hint: see the console log for why sshd isn't up
+ssh.banner.invalid
+  message: port 2222 didn't answer with an ssh banner: not an ssh banner: it doesn't start with SSH-
+  hint: see the console log for why sshd isn't up
+system.aborted
+  message: can't inspect the host: the operation was aborted
+  hint: run the command again
+build.probe
+  message: can't inspect /d/proj/vm/runner/bin/microvm-run: the operation was aborted
+  hint: run the command again
+build.read
+  message: can't inspect /d/proj/vm/runner/bin/microvm-run: the operation was aborted
+  hint: run the command again
+preflight.kvm-absent
+  message: /dev/kvm doesn't exist
+  hint: load the kvm module (kvm_intel or kvm_amd) and enable virtualisation in the firmware
+preflight.kvm-denied
+  message: /dev/kvm isn't accessible to this user
+  hint: join the kvm group and log in again
+preflight.tool-missing
+  message: nix not found on PATH
+  hint: install Nix, or add it to PATH
+preflight.user-namespaces
+  message: unprivileged user namespaces are off: user/max_user_namespaces is 0
+  hint: allow unprivileged user namespaces; virtiofsd's sandbox needs one
+preflight.kernel-too-old
+  message: the kernel is 5.4, but amoeboid needs 5.6 or newer
+  hint: boot a newer kernel
+preflight.kernel-unrecognised
+  message: can't tell the kernel version: bad kernel release: it doesn't start with a number
+  hint: check that /proc is mounted
+preflight.runtime-dir-not-a-directory
+  message: /run/user/1000/amb_proj: not a directory
+  hint: remove it; amoeboid keeps the VM's sockets there
+preflight.legacy-run
+  message: VM 'proj' is still running under the Python launcher (qemu pid 4242 in /run/user/1000/amoeboid/proj)
+  hint: stop it with the Python launcher, then start it with this one
+preflight.problems
+  message: /dev/kvm doesn't exist; /dev/kvm isn't accessible to this user
+  hint: load the kvm module (kvm_intel or kvm_amd) and enable virtualisation in the firmware
+preflight.inspect
+  message: can't inspect the host: the operation was aborted
+  hint: run the command again
+preflight.probe
+  message: can't inspect /run/amb_proj: the operation was aborted
+  hint: run the command again
+preflight.lock
+  message: can't open /d/proj/lock: permission denied
+  hint: check the permissions of the VM's data directory
+lock.io
+  message: can't open /data/proj/lock: permission denied
+  hint: check the permissions of the VM's data directory
+lock.held
+  message: can't lock /data/proj/lock: a process of the VM still holds it
+  hint: stop the VM first, then try again
+lock.unsupported
+  message: can't lock /data/proj/lock: the filesystem doesn't support locks
+  hint: keep the data directory on a filesystem that supports file locks
+lock.aborted
+  message: can't lock /data/proj/lock: the operation was aborted
+  hint: run the command again
+mounts-record.unterminated
+  message: line 2: the line doesn't end with a newline
+  hint: fix the file, or delete it to forget the last shares
+mounts-record.fields
+  message: line 1: expected 3 tab-separated fields, found 2
+  hint: fix the file, or delete it to forget the last shares
+mounts-record.tag
+  message: line 2: expected the tag d2, found "d3"
+  hint: fix the file, or delete it to forget the last shares
+mounts-record.mode
+  message: line 1: the mode is "rwx", not rw or ro
+  hint: fix the file, or delete it to forget the last shares
+mounts-record.path
+  message: line 3: bad path: it isn't absolute
+  hint: fix the file, or delete it to forget the last shares
+mounts-record.too-many
+  message: line 65536: more than 65535 shares
+  hint: fix the file, or delete it to forget the last shares
+run-record.syntax
+  message: invalid KDL: No closing '}' for child block (line 1, column 3)
+  hint: fix the syntax at the reported place
+run-record.missing
+  message: qemu.pid: missing
+  hint: delete the file once no process of the VM is left
+run-record.type
+  message: ssh: expected an integer, found a string
+  hint: delete the file once no process of the VM is left
+run-record.unknown-key
+  message: extra: unknown key
+  hint: delete the file once no process of the VM is left
+run-record.range
+  message: qemu.pid: -1 is out of range
+  hint: delete the file once no process of the VM is left
+run-record.vm
+  message: vm: bad VM name: it is empty
+  hint: delete the file once no process of the VM is left
+run-record.wrong-vm
+  message: vm: the record is of 'other', not 'proj'
+  hint: delete the file once no process of the VM is left
+run-record.pid
+  message: qemu.pid: bad pid: 0 is not a process
+  hint: delete the file once no process of the VM is left
+run-record.program
+  message: qemu.program: bad program name: it is empty
+  hint: delete the file once no process of the VM is left
+run-record.role
+  message: helpers[0].role: "d1" is not a share role
+  hint: delete the file once no process of the VM is left
+run-record.port
+  message: ssh: bad port: 0 is not a port number
+  hint: delete the file once no process of the VM is left
+run-record.contract
+  message: contract: bad contract version: 0 is not a version
+  hint: delete the file once no process of the VM is left
+run-record.console
+  message: console: bad path: it isn't absolute
+  hint: delete the file once no process of the VM is left
+run-record.duplicate-helper
+  message: two helpers have the role virtiofsd-state
+  hint: delete the file once no process of the VM is left
+vm-name.empty
+  message: bad VM name: it is empty
+  hint: use letters, digits and '-', starting with a letter or digit (max 40 chars)
+vm-name.too-long
+  message: bad VM name: 41 characters, at most 40 allowed
+  hint: use at most 40 characters; to keep an existing VM, rename its directory in the data dir
+vm-name.bad-char
+  message: bad VM name: '_' at position 3 isn't a letter, digit or '-'
+  hint: use letters, digits and '-', starting with a letter or digit (max 40 chars)
+vm-name.bad-start
+  message: bad VM name: it starts with '-', not a letter or digit
+  hint: use letters, digits and '-', starting with a letter or digit (max 40 chars)
+user-name.empty
+  message: bad account name: it is empty
+  hint: use lowercase letters, digits, '_' and '-', not starting with a digit or '-' (max 32 chars)
+user-name.too-long
+  message: bad account name: 33 characters, at most 32 allowed
+  hint: use lowercase letters, digits, '_' and '-', not starting with a digit or '-' (max 32 chars)
+user-name.bad-char
+  message: bad account name: 'A' at position 2 isn't a lowercase letter, digit, '_' or '-'
+  hint: use lowercase letters, digits, '_' and '-', not starting with a digit or '-' (max 32 chars)
+user-name.bad-start
+  message: bad account name: it starts with '1', not a lowercase letter or '_'
+  hint: use lowercase letters, digits, '_' and '-', not starting with a digit or '-' (max 32 chars)
+user-name.root
+  message: bad account name: root can't be used in the guest
+  hint: run amoeboid as an unprivileged user
+preset-name.empty
+  message: bad preset name: it is empty
+  hint: use letters, digits, '.', '_' and '-', starting with a letter or digit; give a path (with '/') to use a directory
+preset-name.bad-char
+  message: bad preset name: '/' at position 1 isn't a letter, digit, '.', '_' or '-'
+  hint: use letters, digits, '.', '_' and '-', starting with a letter or digit; give a path (with '/') to use a directory
+preset-name.bad-start
+  message: bad preset name: it starts with '.', not a letter or digit
+  hint: use letters, digits, '.', '_' and '-', starting with a letter or digit; give a path (with '/') to use a directory
+uid.root
+  message: bad user id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+uid.unset
+  message: bad user id: 4294967295 means no user
+gid.root
+  message: bad group id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+gid.unset
+  message: bad group id: 4294967295 means no group
+seconds.zero
+  message: bad seconds: 0 is not a duration
+  hint: use a whole number of seconds from 1 to 86400
+seconds.too-large
+  message: bad seconds: 86401 is more than 86400
+  hint: use a whole number of seconds from 1 to 86400
+timeout.zero
+  message: bad timeout: it is zero
+  hint: use a number of seconds above 0 and at most 86400
+timeout.too-long
+  message: bad timeout: 86400.001s is more than 86400 seconds
+  hint: use a number of seconds above 0 and at most 86400
+timeout.not-finite
+  message: bad timeout: it is not a finite number of seconds
+  hint: use a number of seconds above 0 and at most 86400
+timeout.negative
+  message: bad timeout: it is negative
+  hint: use a number of seconds above 0 and at most 86400
+ssh-port.privileged
+  message: bad ssh port: 1023 is below 1024
+  hint: use 0 (pick a free port) or a port from 1024 to 65535
+guest-port.zero
+  message: bad port: 0 is not a port number
+  hint: use a port from 1 to 65535
+guest-rel.empty
+  message: bad guest path: it is empty
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+guest-rel.absolute
+  message: bad guest path: it is absolute
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+guest-rel.nul-byte
+  message: bad guest path: NUL byte at offset 1
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+guest-rel.empty-component
+  message: bad guest path: component 1 is empty (doubled or trailing '/')
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+guest-rel.current-dir
+  message: bad guest path: component 0 is '.'
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+guest-rel.parent-dir
+  message: bad guest path: component 2 is '..'
+  hint: give a path relative to the share without '..', e.g. home/.gitconfig
+loopback-port.zero
+  message: bad port: 0 is not a port number
+  hint: use a port from 1 to 65535
+pid.zero
+  message: bad pid: 0 is not a process
+pid.too-large
+  message: bad pid: 2147483648 is more than 2147483647
+program-name.empty
+  message: bad program name: it is empty
+  hint: give the file name of the executable, without its directory
+program-name.separator
+  message: bad program name: '/' at offset 3
+  hint: give the file name of the executable, without its directory
+program-name.nul-byte
+  message: bad program name: NUL byte at offset 1
+  hint: give the file name of the executable, without its directory
+proc-stat.no-name
+  message: bad process status line: it has no (name) part
+  hint: check that /proc is the kernel's procfs
+proc-stat.bad-pid
+  message: bad process status line: it doesn't start with a pid
+  hint: check that /proc is the kernel's procfs
+proc-stat.no-start-time
+  message: bad process status line: it has no start time field
+  hint: check that /proc is the kernel's procfs
+proc-stat.bad-start-time
+  message: bad process status line: the start time isn't a number
+  hint: check that /proc is the kernel's procfs
+file-mode.too-large
+  message: bad file mode: 1000 sets bits beyond 777
+  hint: use permission bits only, from 0 to 777 (octal)
+file-name.empty
+  message: bad file name: it is empty
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+file-name.bad-char
+  message: bad file name: character at offset 1 isn't an ASCII letter, digit, '.', '_' or '-'
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+file-name.dots
+  message: bad file name: '.' and '..' name no entry of their own
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+flake-path.query
+  message: bad flake path: '?' at offset 1 would start a URL query
+  hint: use a path of letters, digits, '/' and any of !$&'()*+,-.:;=@_~
+flake-path.fragment
+  message: bad flake path: '#' at offset 2 would start a URL fragment
+  hint: use a path of letters, digits, '/' and any of !$&'()*+,-.:;=@_~
+flake-path.percent
+  message: bad flake path: '%' at offset 3 would be read as a URL escape
+  hint: use a path of letters, digits, '/' and any of !$&'()*+,-.:;=@_~
+flake-path.bad-char
+  message: bad flake path: ' ' at offset 4 is not accepted by nix in a path: URL
+  hint: use a path of letters, digits, '/' and any of !$&'()*+,-.:;=@_~
+term-size.no-rows
+  message: bad terminal size: it has no rows
+term-size.no-cols
+  message: bad terminal size: it has no columns
+term-size.empty
+  message: bad terminal size: it has no rows and no columns
+contract-version.zero
+  message: bad contract version: 0 is not a version
+  hint: set amoeboid.contract to a positive number in base.nix
+abs-path.empty
+  message: bad path: it is empty
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+abs-path.not-absolute
+  message: bad path: it isn't absolute
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+abs-path.nul-byte
+  message: bad path: NUL byte at offset 3
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+abs-path.empty-component
+  message: bad path: component 1 is empty (doubled or trailing '/')
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+abs-path.current-dir
+  message: bad path: component 0 is '.'
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+abs-path.parent-dir
+  message: bad path: component 2 is '..'
+  hint: give an absolute path without '.', '..', doubled or trailing '/', e.g. /home/user/dev
+guest-path.not-absolute
+  message: bad guest path: it isn't absolute
+  hint: use an absolute path without control characters, e.g. /mnt/amoeboid
+guest-path.control-character
+  message: bad guest path: control character at position 4
+  hint: use an absolute path without control characters, e.g. /mnt/amoeboid
+guest-home.root
+  message: bad guest home: it is '/'
+  hint: run amoeboid with $HOME set to your home directory
+guest-home.reserved
+  message: bad guest home: the guest system uses /nix
+  hint: run amoeboid with $HOME set to your home directory
+guest-home.control-character
+  message: bad guest home: control character at position 7
+  hint: run amoeboid with $HOME set to your home directory
+guest-home.dir
+  message: /home/u: no such directory
+  hint: create the directory, or give the path of an existing one
+guest-home.rules
+  message: bad guest home: it is '/'
+  hint: run amoeboid with $HOME set to your home directory
+home-rel.empty
+  message: bad home file path: it is empty
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.absolute
+  message: bad home file path: it is absolute
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.tilde
+  message: bad home file path: it starts with '~'
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.nul-byte
+  message: bad home file path: NUL byte at offset 2
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.empty-component
+  message: bad home file path: component 1 is empty (doubled or trailing '/')
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.current-dir
+  message: bad home file path: component 0 is '.'
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+home-rel.parent-dir
+  message: bad home file path: component 3 is '..'
+  hint: give a path relative to $HOME without '..', e.g. .config/git/config
+identity.user
+  message: can't use the account name: bad account name: it is empty
+  hint: run amoeboid from an account with a plain login name
+identity.uid
+  message: can't use the account uid: bad user id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+identity.gid
+  message: can't use the account gid: bad group id: 0 belongs to root
+  hint: run amoeboid as an unprivileged user
+spec-path.empty
+  message: empty path
+  hint: give a directory such as ~/dev/app, ./app or /srv/app
+spec-path.nul-byte
+  message: NUL byte in path at offset 2
+  hint: give a directory such as ~/dev/app, ./app or /srv/app
+resolve.other-user
+  message: can't expand ~bob: only ~ and ~/... are supported
+  hint: write the path in full, or start it with ./
+mount-spec.empty-path
+  message: empty path in mount ":ro"
+  hint: write PATH[:rw|:ro], e.g. ~/dev/app or ~/dev/libs:ro (default policy: rw)
+mount-spec.nul-byte
+  message: NUL byte in mount path at offset 1
+  hint: write PATH[:rw|:ro], e.g. ~/dev/app or ~/dev/libs:ro (default policy: rw)
+base-spec.preset
+  message: bad preset name: it is empty
+  hint: use letters, digits, '.', '_' and '-', starting with a letter or digit; give a path (with '/') to use a directory
+base-spec.path
+  message: NUL byte in path at offset 1
+  hint: give a directory such as ~/dev/app, ./app or /srv/app
+base-spec.resolve
+  message: can't expand ~bob: only ~ and ~/... are supported
+  hint: write the path in full, or start it with ./
+host-public-key.empty
+  message: host key file is empty
+  hint: delete the VM's ssh directory so a new key is generated
+host-public-key.no-key
+  message: host key file has a type but no key
+  hint: delete the VM's ssh directory so a new key is generated
+host-public-key.type
+  message: unsupported host key type "ssh-rsa": only ssh-ed25519 is used
+  hint: delete the VM's ssh directory so a new ed25519 key is generated
+host-public-key.key
+  message: bad host key: it is empty
+  hint: delete the VM's ssh directory so a new key is generated
+key-base64.empty
+  message: bad host key: it is empty
+  hint: delete the VM's ssh directory so a new key is generated
+key-base64.bad-char
+  message: bad host key: ' ' at position 3 isn't base64
+  hint: delete the VM's ssh directory so a new key is generated
+key-base64.too-much-padding
+  message: bad host key: more than two padding characters
+  hint: delete the VM's ssh directory so a new key is generated
+key-base64.bad-length
+  message: bad host key: its length 5 isn't a multiple of 4
+  hint: delete the VM's ssh directory so a new key is generated
+key-type.unsupported
+  message: unsupported host key type "ssh-rsa": only ssh-ed25519 is used
+  hint: delete the VM's ssh directory so a new ed25519 key is generated
+nix-source.dir
+  message: /p: no such directory
+  hint: create the directory, or give the path of an existing one
+nix-source.no-flake
+  message: /p: not a NixOS config dir (no flake.nix)
+  hint: give a directory with a flake.nix, or a preset (see `amoeboid presets`)
+ssh-banner.not-ssh
+  message: not an ssh banner: it doesn't start with SSH-
+  hint: something other than sshd answers on the forwarded port; see the console log
+ssh-banner.no-version
+  message: not an ssh banner: nothing follows SSH-
+  hint: something other than sshd answers on the forwarded port; see the console log
+ssh-banner.too-long
+  message: not an ssh banner: 254 characters are more than 253
+  hint: something other than sshd answers on the forwarded port; see the console log
+ssh-banner.bad-char
+  message: not an ssh banner: '\u{1b}' at position 9 isn't printable ASCII
+  hint: something other than sshd answers on the forwarded port; see the console log
+host-dir.not-a-directory
+  message: /srv/x: not a directory
+  hint: create the directory, or give the path of an existing one
+existing-dir.missing
+  message: /a: no such directory
+  hint: create the directory, or give the path of an existing one
+existing-dir.not-a-directory
+  message: /b: not a directory
+  hint: create the directory, or give the path of an existing one
+existing-file.missing
+  message: /a: no such file
+  hint: create the file, or give the path of an existing one
+existing-file.not-a-file
+  message: /b: not a regular file
+  hint: create the file, or give the path of an existing one
+executable.missing
+  message: /a: no such file
+  hint: check that the program exists
+executable.not-a-file
+  message: /b: not a regular file
+  hint: check that the program exists
+executable.not-executable
+  message: /c: not executable
+  hint: make the file executable
+mounts.too-many
+  message: can't share 65536 directories: tags run out at 65535
+  hint: share at most 65535 directories
+mounts.unlistable
+  message: can't share /srv/a	b: its path contains a tab or a newline
+  hint: share a directory whose path has no tab or newline (rename it or share a parent)
+mounts.duplicate
+  message: /srv/a: given more than once
+  hint: list each directory once
+mounts.not-a-directory
+  message: /srv/x: not a directory
+  hint: create the directory, or give the path of an existing one
+mounts.hides-home
+  message: /home: would hide the VM's home directory /home/u
+  hint: share a directory inside /home/u, or one that doesn't contain it
+socket.unknown
+  message: unknown socket name "x.sock"
+  hint: use control.sock, ro-store.sock, state.sock or dN.sock (N from 1, no leading zeros)
+kernel-version.no-major
+  message: bad kernel release: it doesn't start with a number
+  hint: check that /proc is mounted and the kernel release looks like 6.1.0
+kernel-version.no-minor
+  message: bad kernel release: the major number isn't followed by '.' and a minor number
+  hint: check that /proc is mounted and the kernel release looks like 6.1.0
+build.nix-missing
+  message: nix not found
+  hint: install Nix, or add it to PATH
+build.failed
+  message: nix build failed (exit status 1)
+  hint: fix what nix reported above and start again
+build.output
+  message: the build's runner is unusable: /data/vm/runner/bin/microvm-run: not executable
+  hint: rebase the VM onto the reference config that came with this amoeboid
+build.contract-missing
+  message: /data/vm/contract: the build has no contract
+  hint: rebase the VM onto an updated preset (--base-nix-config)
+build.contract-not-a-file
+  message: /data/vm/contract: the contract isn't a regular file
+  hint: rebase the VM onto the reference config that came with this amoeboid
+build.contract-invalid
+  message: /data/vm/contract: unusable contract: missing field `version` at line 1 column 2
+  hint: rebase the VM onto the reference config that came with this amoeboid
+build.contract-mismatch
+  message: the build's contract has version = 2, but this amoeboid needs 1
+  hint: rebase the VM onto a reference config that matches this amoeboid
+contract.invalid
+  message: missing field `version` at line 1 column 2
+  hint: rebase the VM onto a reference config whose contract this amoeboid implements
+share-tag-name.empty
+  message: bad share tag: it is empty
+  hint: use up to 36 ASCII letters, digits, '.', '_' or '-' for the tag
+share-tag-name.too-long
+  message: bad share tag: 37 bytes is longer than 36
+  hint: use up to 36 ASCII letters, digits, '.', '_' or '-' for the tag
+share-tag-name.bad-char
+  message: bad share tag: character at offset 1 isn't an ASCII letter, digit, '.', '_' or '-'
+  hint: use up to 36 ASCII letters, digits, '.', '_' or '-' for the tag
+state-file-name.empty
+  message: bad state file name: it is empty
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+state-file-name.bad-char
+  message: bad state file name: character at offset 1 isn't an ASCII letter, digit, '.', '_' or '-'
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+state-file-name.dots
+  message: bad state file name: '.' and '..' name no entry of their own
+  hint: use ASCII letters, digits, '.', '_' and '-', other than '.' and '..'
+word.empty
+  message: bad word: it is empty
+  hint: use printable ASCII without spaces or '/'
+word.separator
+  message: bad word: '/' at offset 1
+  hint: use printable ASCII without spaces or '/'
+word.not-graphic
+  message: bad word: byte outside printable ASCII at offset 2
+  hint: use printable ASCII without spaces or '/'
+socket-path.too-long
+  message: socket path /xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx is 108 bytes, more than 107
+  hint: set $XDG_RUNTIME_DIR (or $TMPDIR) to a shorter directory

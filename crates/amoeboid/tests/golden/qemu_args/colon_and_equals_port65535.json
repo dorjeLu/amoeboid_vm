@@ -1,0 +1,13 @@
+{
+  "mounts": [
+    {
+      "path": "/srv/a:b",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/k=v",
+      "mode": "ro"
+    }
+  ],
+  "ssh_port": 65535
+}

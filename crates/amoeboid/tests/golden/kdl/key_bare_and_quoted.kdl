@@ -1,0 +1,12 @@
+plain 1
+with-dash 2
+with_underscore 3
+_leading 4
+Mixed9 5
+"9digit" 6
+"with space" 7
+"dot.ted" 8
+"ünï" 9
+"" 10
+"quo\"te" 11
+"new\nline" 12

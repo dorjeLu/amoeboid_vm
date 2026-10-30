@@ -1,0 +1,12 @@
+{
+  "mounts": [
+    {
+      "path": "/home/u/dev",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/ref",
+      "mode": "ro"
+    }
+  ]
+}

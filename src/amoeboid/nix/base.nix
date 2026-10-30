@@ -21,9 +21,17 @@ in
       type = lib.types.str;
       description = "Guest home; the host user's home path, so paths are the same on both.";
     };
+    contract = lib.mkOption {
+      type = lib.types.ints.positive;
+      description = ''
+        Version of the contract between this config and the launcher (names of shares,
+        sockets and state files). The flake publishes it as `contract` in the build output.
+      '';
+    };
   };
 
   config = {
+    amoeboid.contract = 1;
     system.stateVersion = "26.05";
     networking.hostName = lib.mkDefault "amoeboid";
 

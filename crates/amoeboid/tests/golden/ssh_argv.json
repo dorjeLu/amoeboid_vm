@@ -1,0 +1,155 @@
+[
+  {
+    "name": "no_command",
+    "input": {
+      "user": "alice",
+      "port": 40022,
+      "alias": "amoeboid-proj",
+      "command": [],
+      "known_hosts": "/home/u/.local/share/amoeboid/proj/ssh/known_hosts"
+    },
+    "output": [
+      "ssh",
+      "-p",
+      "40022",
+      "-o",
+      "HostKeyAlias=amoeboid-proj",
+      "-o",
+      "UserKnownHostsFile=/home/u/.local/share/amoeboid/proj/ssh/known_hosts",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "LogLevel=ERROR",
+      "-o",
+      "ForwardAgent=no",
+      "-o",
+      "ForwardX11=no",
+      "-o",
+      "GSSAPIDelegateCredentials=no",
+      "-o",
+      "PermitLocalCommand=no",
+      "alice@127.0.0.1"
+    ]
+  },
+  {
+    "name": "command",
+    "input": {
+      "user": "alice",
+      "port": 1024,
+      "alias": "amoeboid-p",
+      "command": [
+        "ls",
+        "-la"
+      ],
+      "known_hosts": "/home/u/.local/share/amoeboid/proj/ssh/known_hosts"
+    },
+    "output": [
+      "ssh",
+      "-p",
+      "1024",
+      "-o",
+      "HostKeyAlias=amoeboid-p",
+      "-o",
+      "UserKnownHostsFile=/home/u/.local/share/amoeboid/proj/ssh/known_hosts",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "LogLevel=ERROR",
+      "-o",
+      "ForwardAgent=no",
+      "-o",
+      "ForwardX11=no",
+      "-o",
+      "GSSAPIDelegateCredentials=no",
+      "-o",
+      "PermitLocalCommand=no",
+      "alice@127.0.0.1",
+      "ls",
+      "-la"
+    ]
+  },
+  {
+    "name": "command_with_spaces",
+    "input": {
+      "user": "_svc-1",
+      "port": 65535,
+      "alias": "amoeboid-x",
+      "command": [
+        "echo",
+        "a b",
+        "",
+        "\u65e5\u672c",
+        "-v"
+      ],
+      "known_hosts": "/home/u/.local/share/amoeboid/proj/ssh/known_hosts"
+    },
+    "output": [
+      "ssh",
+      "-p",
+      "65535",
+      "-o",
+      "HostKeyAlias=amoeboid-x",
+      "-o",
+      "UserKnownHostsFile=/home/u/.local/share/amoeboid/proj/ssh/known_hosts",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "LogLevel=ERROR",
+      "-o",
+      "ForwardAgent=no",
+      "-o",
+      "ForwardX11=no",
+      "-o",
+      "GSSAPIDelegateCredentials=no",
+      "-o",
+      "PermitLocalCommand=no",
+      "_svc-1@127.0.0.1",
+      "echo",
+      "a b",
+      "",
+      "\u65e5\u672c",
+      "-v"
+    ]
+  },
+  {
+    "name": "dash_commands",
+    "input": {
+      "user": "u",
+      "port": 22222,
+      "alias": "amoeboid-d",
+      "command": [
+        "-o",
+        "ProxyCommand=evil",
+        "--",
+        "x"
+      ],
+      "known_hosts": "/home/u/.local/share/amoeboid/proj/ssh/known_hosts"
+    },
+    "output": [
+      "ssh",
+      "-p",
+      "22222",
+      "-o",
+      "HostKeyAlias=amoeboid-d",
+      "-o",
+      "UserKnownHostsFile=/home/u/.local/share/amoeboid/proj/ssh/known_hosts",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "LogLevel=ERROR",
+      "-o",
+      "ForwardAgent=no",
+      "-o",
+      "ForwardX11=no",
+      "-o",
+      "GSSAPIDelegateCredentials=no",
+      "-o",
+      "PermitLocalCommand=no",
+      "u@127.0.0.1",
+      "-o",
+      "ProxyCommand=evil",
+      "--",
+      "x"
+    ]
+  }
+]

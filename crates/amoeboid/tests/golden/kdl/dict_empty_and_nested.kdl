@@ -1,0 +1,7 @@
+outer {
+    inner {
+        deep {}
+    }
+    other 1
+}
+e {}

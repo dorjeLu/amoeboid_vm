@@ -1,0 +1,1006 @@
+[
+  {
+    "name": "none",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "one",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/srv/dev/app",
+          "mode": "rw"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/dev/app",
+          "mode": "rw"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/srv/dev/app",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "two_mixed",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/home/u/dev",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/ref",
+          "mode": "ro"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/home/u/dev",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/ref",
+          "mode": "ro"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/home/u/dev",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d2.sock",
+          "--shared-dir=/srv/ref",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "spaces_unicode",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/srv/my project",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\u65e5\u672c",
+          "mode": "ro"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/my project",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/\u65e5\u672c",
+          "mode": "ro"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/srv/my project",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d2.sock",
+          "--shared-dir=/srv/\u65e5\u672c",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "ten",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/srv/m0",
+          "mode": "ro"
+        },
+        {
+          "path": "/srv/m1",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m2",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m3",
+          "mode": "ro"
+        },
+        {
+          "path": "/srv/m4",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m5",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m6",
+          "mode": "ro"
+        },
+        {
+          "path": "/srv/m7",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m8",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m9",
+          "mode": "ro"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/m0",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/m1",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d3",
+          "socket": "d3.sock",
+          "source": "/srv/m2",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d4",
+          "socket": "d4.sock",
+          "source": "/srv/m3",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-d5",
+          "socket": "d5.sock",
+          "source": "/srv/m4",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d6",
+          "socket": "d6.sock",
+          "source": "/srv/m5",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d7",
+          "socket": "d7.sock",
+          "source": "/srv/m6",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-d8",
+          "socket": "d8.sock",
+          "source": "/srv/m7",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d9",
+          "socket": "d9.sock",
+          "source": "/srv/m8",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d10",
+          "socket": "d10.sock",
+          "source": "/srv/m9",
+          "mode": "ro"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/srv/m0",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d2.sock",
+          "--shared-dir=/srv/m1",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d3.sock",
+          "--shared-dir=/srv/m2",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d4.sock",
+          "--shared-dir=/srv/m3",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d5.sock",
+          "--shared-dir=/srv/m4",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d6.sock",
+          "--shared-dir=/srv/m5",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d7.sock",
+          "--shared-dir=/srv/m6",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d8.sock",
+          "--shared-dir=/srv/m7",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d9.sock",
+          "--shared-dir=/srv/m8",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d10.sock",
+          "--shared-dir=/srv/m9",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "twelve",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/srv/m00",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m01",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m02",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m03",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m04",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m05",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m06",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m07",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m08",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m09",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m10",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/m11",
+          "mode": "rw"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/m00",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/m01",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d3",
+          "socket": "d3.sock",
+          "source": "/srv/m02",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d4",
+          "socket": "d4.sock",
+          "source": "/srv/m03",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d5",
+          "socket": "d5.sock",
+          "source": "/srv/m04",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d6",
+          "socket": "d6.sock",
+          "source": "/srv/m05",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d7",
+          "socket": "d7.sock",
+          "source": "/srv/m06",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d8",
+          "socket": "d8.sock",
+          "source": "/srv/m07",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d9",
+          "socket": "d9.sock",
+          "source": "/srv/m08",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d10",
+          "socket": "d10.sock",
+          "source": "/srv/m09",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d11",
+          "socket": "d11.sock",
+          "source": "/srv/m10",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d12",
+          "socket": "d12.sock",
+          "source": "/srv/m11",
+          "mode": "rw"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/srv/m00",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d2.sock",
+          "--shared-dir=/srv/m01",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d3.sock",
+          "--shared-dir=/srv/m02",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d4.sock",
+          "--shared-dir=/srv/m03",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d5.sock",
+          "--shared-dir=/srv/m04",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d6.sock",
+          "--shared-dir=/srv/m05",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d7.sock",
+          "--shared-dir=/srv/m06",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d8.sock",
+          "--shared-dir=/srv/m07",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d9.sock",
+          "--shared-dir=/srv/m08",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d10.sock",
+          "--shared-dir=/srv/m09",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d11.sock",
+          "--shared-dir=/srv/m10",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d12.sock",
+          "--shared-dir=/srv/m11",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "colon_and_equals",
+    "input": {
+      "guest_state": "/home/u/.local/share/amoeboid/proj/guest",
+      "mounts": [
+        {
+          "path": "/srv/a:b",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/k=v",
+          "mode": "ro"
+        }
+      ],
+      "binary": "/nix/store/abc-virtiofsd/bin/virtiofsd",
+      "runtime": "/run/user/1234/amb_proj",
+      "guest_uid": 1000,
+      "guest_gid": 100,
+      "host_uid": 1234,
+      "host_gid": 4321
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/home/u/.local/share/amoeboid/proj/guest",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/a:b",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/k=v",
+          "mode": "ro"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/state.sock",
+          "--shared-dir=/home/u/.local/share/amoeboid/proj/guest",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d1.sock",
+          "--shared-dir=/srv/a:b",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/abc-virtiofsd/bin/virtiofsd",
+          "--socket-path=/run/user/1234/amb_proj/d2.sock",
+          "--shared-dir=/srv/k=v",
+          "--sandbox=namespace",
+          "--uid-map=:1000:1234:1:",
+          "--gid-map=:100:4321:1:",
+          "--log-level=error",
+          "--readonly"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "awkward_paths",
+    "input": {
+      "guest_state": "/s/guest dir",
+      "mounts": [
+        {
+          "path": "/srv/with space",
+          "mode": "rw"
+        },
+        {
+          "path": "/srv/\u65e5\u672c=x",
+          "mode": "ro"
+        }
+      ],
+      "binary": "/nix/store/x y/virtiofsd",
+      "runtime": "/run/user/1/amb_a",
+      "guest_uid": 1,
+      "guest_gid": 4294967294,
+      "host_uid": 4294967294,
+      "host_gid": 1
+    },
+    "output": {
+      "shares": [
+        {
+          "role": "virtiofsd-ro-store",
+          "socket": "ro-store.sock",
+          "source": "/nix/store",
+          "mode": "ro"
+        },
+        {
+          "role": "virtiofsd-state",
+          "socket": "state.sock",
+          "source": "/s/guest dir",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d1",
+          "socket": "d1.sock",
+          "source": "/srv/with space",
+          "mode": "rw"
+        },
+        {
+          "role": "virtiofsd-d2",
+          "socket": "d2.sock",
+          "source": "/srv/\u65e5\u672c=x",
+          "mode": "ro"
+        }
+      ],
+      "virtiofsd_argv": [
+        [
+          "/nix/store/x y/virtiofsd",
+          "--socket-path=/run/user/1/amb_a/ro-store.sock",
+          "--shared-dir=/nix/store",
+          "--sandbox=namespace",
+          "--uid-map=:1:4294967294:1:",
+          "--gid-map=:4294967294:1:1:",
+          "--log-level=error",
+          "--readonly"
+        ],
+        [
+          "/nix/store/x y/virtiofsd",
+          "--socket-path=/run/user/1/amb_a/state.sock",
+          "--shared-dir=/s/guest dir",
+          "--sandbox=namespace",
+          "--uid-map=:1:4294967294:1:",
+          "--gid-map=:4294967294:1:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/x y/virtiofsd",
+          "--socket-path=/run/user/1/amb_a/d1.sock",
+          "--shared-dir=/srv/with space",
+          "--sandbox=namespace",
+          "--uid-map=:1:4294967294:1:",
+          "--gid-map=:4294967294:1:1:",
+          "--log-level=error"
+        ],
+        [
+          "/nix/store/x y/virtiofsd",
+          "--socket-path=/run/user/1/amb_a/d2.sock",
+          "--shared-dir=/srv/\u65e5\u672c=x",
+          "--sandbox=namespace",
+          "--uid-map=:1:4294967294:1:",
+          "--gid-map=:4294967294:1:1:",
+          "--log-level=error",
+          "--readonly"
+        ]
+      ]
+    }
+  }
+]

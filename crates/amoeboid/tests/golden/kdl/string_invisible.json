@@ -1,0 +1,44 @@
+{
+  "dict": [
+    [
+      "nbsp",
+      "a\u00a0b"
+    ],
+    [
+      "zero_width_space",
+      "a\u200bb"
+    ],
+    [
+      "line_separator",
+      "a\u2028b"
+    ],
+    [
+      "paragraph_separator",
+      "a\u2029b"
+    ],
+    [
+      "bom",
+      "\ufeffbom"
+    ],
+    [
+      "bidi_override",
+      "a\u202eb"
+    ],
+    [
+      "word_joiner",
+      "\u2060"
+    ],
+    [
+      "ideographic_space",
+      "\u3000"
+    ],
+    [
+      "private_use",
+      "\ue000"
+    ],
+    [
+      "noncharacter",
+      "\ufffe\uffff"
+    ]
+  ]
+}

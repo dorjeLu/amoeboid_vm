@@ -1,0 +1,8 @@
+quote "say \"hi\""
+backslash "a\\b"
+newline "a\nb"
+tab "a\tb"
+cr "a\rb"
+backspace "a\bb"
+formfeed "a\fb"
+mixed "C:\\dir\\\"x\"\n"

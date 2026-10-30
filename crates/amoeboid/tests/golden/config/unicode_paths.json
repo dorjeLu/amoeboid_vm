@@ -1,0 +1,37 @@
+{
+  "user": "u",
+  "uid": 2,
+  "gid": 2,
+  "base_nix_config": "default",
+  "default_mounts": [
+    {
+      "path": "/srv/\u65e5\u672c\u8a9e",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/caf\u00e9 \u00f1",
+      "mode": "ro"
+    },
+    {
+      "path": "/srv/rocket-\ud83d\ude80",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/zero\u200bwidth",
+      "mode": "rw"
+    },
+    {
+      "path": "/srv/nb\u00a0sp",
+      "mode": "ro"
+    }
+  ],
+  "home_files": [
+    "dokumente/\u00e4rger.txt",
+    "e\u0301.conf"
+  ],
+  "ssh_port": 0,
+  "timeouts": {
+    "boot": 180,
+    "stop": 60
+  }
+}

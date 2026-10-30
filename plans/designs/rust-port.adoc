@@ -1,0 +1,646 @@
+= Design: amoeboid in Rust
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+Replaces the Python launcher with a Rust workspace: a library holding all management logic (usable as a dependency by other Rust projects) and a thin CLI.
+Operator-visible behaviour stays as specified in `README.adoc` except where this document says otherwise (<<compat>>).
+The Python implementation is the reference until parity, then removed.
+
+Status: superseded by `decisions/0001-actor-runtime.adoc`, which replaces the orchestration, process-ownership and persistence model; kept for the value-level, plan and adapter rationale.
+
+== Goals and non-goals
+
+Goals::
+* Same management logic: presets, per-VM config copies, `nix build`, per-start state, virtiofsd + qemu supervision, ssh pinning, QMP power-off.
+* Library usable by other Rust projects: async end to end (tokio), typed errors, no printing or logging, no global state.
+* "Programming on rails" in Rust: `Result` everywhere, exhaustive enums, value objects that cannot hold invalid data, pure decision functions over immutable facts.
+* No `unsafe` in our crates, no panics, no null.
+* Same `run_config.kdl` format, with a bijective `RunConfig` <-> text mapping.
+* Resiliency fixes over the Python version (<<resiliency>>).
+
+Non-goals (now)::
+* A daemon. The library is stateless between calls (all state is on disk and in the VM lock), so a daemon can be added later as another driver.
+* Console attachment in the library. The CLI locates and tails the console from the returned value objects.
+* Home on a block-device image (<<home-storage>>): modelled, not implemented.
+* Shipping or embedding Nix configs. Configs are always directories supplied by the operator.
+* Running amoeboid inside the guest. The guest never needs amoeboid.
+
+== Decision log
+
+[cols="1,3"]
+|===
+|Topic |Decision
+
+|Crates |`amoeboid` (library, all logic) and `amoeboid-cli` (binary `amoeboid`), Cargo workspace in this repo under `crates/`
+|Toolchain |latest stable (1.99.1 at time of writing), edition 2024, pinned in `mise.toml`
+|Coverage |`rs-cov` alone sets `RUSTC_BOOTSTRAP=1` so the pinned stable accepts `--branch`; test code is `coverage(off)`
+|Async |tokio, minimal feature set (<<deps>>); waiting is the caller's concern
+|Nix configs |only ever directories (presets, `--base-nix-config` paths); never embedded in the binary
+|Nix contract |`base.nix` declares a contract version; the build emits `contract.json`, checked against Rust's constants
+|VM lock |one `flock` per VM at `<data>/NAME/lock`, never deleted, inherited by every process of a run
+|Runtime dir |`$XDG_RUNTIME_DIR/amb_<name>/`, unhashed; VM names limited to 40 chars
+|Errors |three layers of exhaustive enums, `thiserror` for `Display`/`Error`, `Diagnostic` trait for code/message/hint, `Fault<T, P>` marker for transience; semver-major on new variants
+|Warnings |returned as values in the `Ok` side, never logged by the library
+|Linger |config key, default `enable`; missing linger is a warning, never a failure
+|Home storage |config key, `share` implemented; `volume` modelled and rejected as not yet implemented
+|Refinement types |everything needing validation and everything externally supplied is a refined type (`Refined<T, P>`, or a struct with a private field where a total constructor from proven pieces is needed); no unchecked constructor anywhere; raw data only at boundaries (<<refinement>>)
+|Python |not modified; removed at parity
+|===
+
+== Workspace
+
+[source]
+----
+Cargo.toml                    workspace: members, [workspace.lints], [workspace.dependencies]
+crates/
+  amoeboid/                   library
+    src/
+      lib.rs
+      rails.rs                Fault, Retry, Backoff, Clock (sleep), retry, Validated, NonEmpty
+      diagnostic.rs           Diagnostic trait, Severity
+      domain/                 value objects (one module each)
+      kdl/                    Value tree, canonical emitter, parser adapter
+      config/                 RunConfig <-> Document, decoders (pure; file side in ops::config)
+      records/                Run and LastShares codecs (pure; file side in ops::records)
+      layout.rs               Paths, VmPaths, RuntimeDir
+      plan/                   pure construction: argv, qemu args, tables, host.nix, ssh argv
+      console.rs              streaming console sanitiser (used by the CLI)
+      contract.rs             contract constants + contract.json model
+      ports/                  effect traits
+      adapters/               real implementations of the ports (tokio, rustix, std), incl. the `AtomicWrite` helper
+      ops/                    use cases: start, stop, restart, status, list, ssh_target, presets
+  amoeboid-cli/               binary `amoeboid`
+    src/
+      main.rs                 runtime, signals, exit codes
+      args.rs                 lexopt parsing, help text
+      render.rs               diagnostics and warnings to stderr
+      console.rs              tailing console.log for --detach
+      prompt.rs               interactive mounts, confirmations
+nix/                          unchanged location of the reference config (copied from src/amoeboid/nix at removal of Python)
+----
+
+Dependencies point downward: `domain` < `kdl` < `config`, `layout`, `plan`, `contract` < `ports` < `adapters`, `ops`.
+Pure modules never import `ports` or `adapters`. Nothing in the library imports from the CLI.
+
+== Architecture
+
+=== Observe, decide, execute
+
+Every use case is a sequence of rounds:
+
+. *Observe*: effect ports gather facts into one immutable value (`StartFacts`, `StopFacts`, ...).
+. *Decide*: a pure, synchronous, total function `fn(&World, &Request, &Facts) -> Result<Plan, E>` returns a plan as data.
+. *Execute*: an interpreter over the ports carries out the plan; process handles are wrapped in guards on creation.
+
+`start` uses two rounds: preparation (lock, config copy/rebase, host module, build, host key) and boot (contract check, port, guest files, runtime files, helpers, runner).
+Plans are plain data, so they are property-testable and printable (a `--dry-run` is possible later at no design cost).
+
+Start decisions (operator, 2026-10-29, answering O3's questions):
+
+* *Spawn context.* `Procs::spawn` takes `cwd: &AbsDir` (the runner and the helpers run in the runtime dir: qemu's socket paths and `amoeboid-qemu-args` are relative). The session follows `ChildIo`: `Inherit` keeps the terminal's session (foreground qemu), `Null` and `Log` start a new one (`setsid`), so terminal signals never reach helpers or a detached VM.
+* *Mount choice.* Pure `choose_mounts(explicit, last, defaults) -> MountChoice::{Chosen(Vec<MountRequest>), Ask}` (explicit, else the last run's `mounts`, else `default-mounts`); on `Ask` the CLI prompts. `start` receives the final list; an empty list is valid.
+* *qemu identity.* The runner execs qemu, so `/proc/PID/exe` changes after the spawn. The guard of our own child signals it through the child handle (an unreaped child's pid cannot be recycled), independent of the program name. `Spawned::settle()` re-reads the identity once the VM is ready, requiring the same pid and start time and accepting the new program; the settled identity is `Run.qemu`, which `stop` verifies.
+* *Readiness and port race.* Detached: ready when sshd's banner arrives on the forwarded port. Foreground: ready when a TCP connect to the forwarded port succeeds while qemu lives (the hostfwd is bound). qemu exiting before it is ready: with an auto port that someone else now holds (`Ssh::port_free`), `Fault::Transient(PortTaken)` and `retry` re-picks the port and respawns qemu; otherwise `StartError::HelperDied { role: Qemu, status }`. A fixed port in use is permanent.
+* *Handover.* `Spawned::release(self) -> ProcIdentity` disarms a guard. Detached: `start` releases qemu and the helpers (they keep the lock by inheritance) and returns `Started { run, warnings, foreground: None }`. Foreground: `foreground: Some(Running)`, a library value holding the qemu child, the helper guards and the lock, with `powerdown(&self)` (QMP; the CLI calls it on Ctrl-C and keeps waiting) and `wait(self) -> Result<Exit, _>` (waits for qemu, then terminates the helpers, removes `run`, clears the runtime dir).
+
+
+`World` is built once at the edge from the environment: `Paths`, `Identity`, `RunConfig`, `Preflight`. Nothing below it reads environment variables or process identity.
+
+=== Ports and adapters
+
+Effects are traits with `async fn` (explicit `Send` futures), passed as generic parameters (static dispatch), never as trait objects in the core path:
+
+[cols="1,3"]
+|===
+|Port |Responsibility
+
+|`HostFs` |host-owned files: atomic writes, reads, idempotent removal (`remove_file`, `clear_dir` for the runtime dir), dir copies, atomic dir swap (`RENAME_EXCHANGE`), and the observation probes (canonicalise + kind check) behind the observed types (<<observed>>)
+|`GuestDelivery` |puts `GuestFile`s where the guest reads them; implemented by `ShareDelivery` (guest-writable dir, `openat2` with `RESOLVE_BENEATH \| RESOLVE_NO_SYMLINKS \| RESOLVE_NO_MAGICLINKS` per directory component from the share root's descriptor, files written to an `O_EXCL` temp name and renamed over, replaced trees moved into `<data>/NAME/.trash/` and deleted there)
+|`VmLock` |acquire/inspect the VM lock, produce an inheritable handle for children
+|`Procs` |spawn with lock inheritance, identity (`pid` + start time from `/proc/PID/stat`), signal only verified identities, wait. `spawn(&Argv, LockHandoff::{Stdin(&H), Inherited(&H), None}, ChildIo::{Null, Inherit, Log(AbsPath)}) -> Result<Self::Child, SpawnError>` is synchronous and identifies the child before returning, so the returned child is already its guard (drop sends SIGTERM to the verified identity); `Child::{identity(), wait() -> Exit::{Code, Signal}}`
+|`Nix` |`nix build` with the `host` input overridden (`Nix::build(flake, host_module, out_link) -> BuildStatus`); `ops::build` maps the ending to `BuildError` and reads the out-link into `BuildOutput`
+|`System` |observations of the host for the preflight: `/dev/kvm` access, tools on `PATH`, the user-namespace switches in `/proc/sys`, the kernel release, a qemu left by the Python launcher; decisions over them are pure (`ops::preflight::decide`)
+|`Ssh` |host key generation (temp dir + rename), pinning, free port, banner probe
+|`Qmp` |`qmp_capabilities` + `system_powerdown` over the control socket (serde_json)
+|`Clock` |monotonic time and sleeping (tokio time), so tests control it
+|`Session` |linger state, enabling linger (`loginctl`)
+|===
+
+Blocking syscalls (rustix, std fs) run in `spawn_blocking`. Every write they perform is atomic, so a cancelled future never leaves a half-written file.
+
+[[refinement]]
+=== Refinement types
+
+Every value that needs validation, and every value supplied from outside our own computation, is a refinement type: a base type plus a predicate, constructible only by checking the predicate.
+Holding one is the proof; nothing downstream re-checks.
+
+==== Mechanism
+
+[source,rust]
+----
+/// A predicate over `T` with its own exhaustive error type.
+pub trait Refinement<T> {
+    type Error: Diagnostic + Eq + Debug;
+    fn check(value: &T) -> Result<(), Self::Error>;
+}
+
+/// `T` proven to satisfy `P`. The field is private; the only ways in are `parse` and `refined!`.
+pub struct Refined<T, P: Refinement<T>>(T, PhantomData<P>);
+
+impl<T, P: Refinement<T>> Refined<T, P> {
+    pub fn parse(value: T) -> Result<Self, P::Error>;
+    pub fn get(&self) -> &T;
+    pub fn into_inner(self) -> T;
+}
+
+pub type Uid = Refined<u32, UidRange>;   // UidRange: 1..=2^32-2
+pub type Gid = Refined<u32, GidRange>;   // distinct marker, so a Gid is never a Uid
+----
+
+* One marker type per domain concept, even when two predicates coincide (`UidRange`, `GidRange`), so the types stay distinct.
+* Each predicate's `Error` is a domain enum (`VmNameError::{Empty, TooLong { len }, BadChar { ch, at }, BadStart { ch }}`), not a generic "predicate failed".
+* Composite refinements whose proof involves several fields or a relation (`Shares`, `Contract`, `Run`) are structs with private fields and a `parse`/`validate` returning their own error enum; same contract, no `Refined` wrapper.
+* Value types that also need a *total* constructor from already proven pieces are structs with a private field instead of `Refined` (a `Refined` has no such door): `Abs<K>` (`AbsPath`, `AbsDir`, `HomeDir`, ...: `join`, `parent`), `FlakeAbs<K>`, `kdl::Int` (`from_i64`), `SocketName` and `QemuArg` (`of(fragments)`). Same contract as a `Refined`: a checking `parse`, no other way in from free text.
+* Total constructors combine proofs only: other values of refined types, sealed marker traits whose implementors' own predicate implies the property (`Segment`, `FlakeSegment`; each implementation has a test), numbers, and `refined!` literals. Free text never reaches a constructor, including a module-private one: nothing like `Foo(format!(..))` trusting its caller. `QemuArg` and `SocketName` are concatenated from `Fragment`s (a `Word` literal, a share tag, a port or index number).
+* No unchecked constructor exists (no `new_unchecked`, no `From<T>`), including in tests: test values go through `parse`.
+* Constants use `refined!(Type, literal)`. Traits have no `const` methods on stable, so the marker of `Type` repeats its predicate as an inherent `const fn check_const(value) -> Option<Checked<T, Marker>>` (`&'static str` literals: `CheckedStr`), and the macro evaluates it in a `const` block, panicking on `None`, then `.refine()`s. The check runs at compile time, so an invalid constant does not compile and the panic can never run (the one sanctioned `clippy::panic` allow, inside the macro, with that reason). `Checked::new` is crate-private, so only this crate's markers can vouch for a value; a test per marker compares `check_const` with `check` over the predicate's edges.
+* `serde` deserialisation targets refined types directly (`#[serde(try_from = "T")]`), so JSON at a boundary decodes straight into proofs.
+* Refined values derive `PartialEq, Eq, Hash, Debug` and expose the inner value read-only (`get`, `AsRef`), never `DerefMut`.
+
+==== Where values come from
+
+Rule: *raw data exists only at a boundary.* A boundary module turns it into refined values or a typed error; everything inward (`domain`, `plan`, decide functions, `ops` signatures, port signatures) takes and returns refined types only.
+Values computed by us from refined inputs are produced by total functions (`RunDirName::of(&VmName)`, `ShareTag::nth(NonZeroU16)`), never re-parsed.
+
+[cols="1,2,3"]
+|===
+|Boundary |Raw input |Refined into
+
+|Environment (`World` construction) |`$HOME`, `$XDG_*`, `$TMPDIR` |`HomeDir`, `XdgDir` (absolute, else ignored per the XDG spec), `TmpDir`, then `Paths` (whose data dir must also be a `FlakeDir`: only letters, digits, `/` and ``!$&'()*+,-.:;=@_~``, the characters Nix accepts in `path:` flake references)
+|Process identity |uid, gid, user name |`Uid`, `Gid`, `UserName` (a host account name outside the grammar is a typed first-run error)
+|CLI arguments |`--name`, MOUNTs, `--base-nix-config`, `--timeout`, `--boot-timeout`, ssh passthrough args |`VmName`, `MountSpec` → `Mount`, `BaseSpec`, `Timeout` (finite, `> 0`, `<= 86400 s`), `SshPassthrough` (opaque; only appendable after the destination in `ssh_argv`)
+|Interactive prompt |typed mount lines |`MountSpec` → `Mount`, checked against already chosen `Shares`
+|`run_config.kdl` |KDL document |`RunConfig` of refined fields
+|Host records |`<data>/NAME/run`, `<data>/NAME/mounts` |`Run`, `LastShares` (strict; corruption is a typed error)
+|Filesystem observation |`$HOME` as the guest sees it, paths given by the operator, preset dirs, `home-files`, build out-link |`GuestHome`, `HostDir`, `ExistingDir`, `ExistingFile`, `NixSource` (dir with `flake.nix`), `BuildOutput { runner: Executable, virtiofsd: Executable, contract: Contract }` (<<observed>>)
+|Build output |`contract.json` |`Contract` (refined fields: `ContractVersion`, `Socket` (the closed set `control`, `ro-store`, `state`, `dN`; any other socket name is refused when the contract is loaded), `ShareTagName`, `StateFileName`, `GuestPath`; `BuildError` is defined beside `Contract` because `check` returns it)
+|`/proc` |`/proc/PID/stat`, `/proc/PID/exe` |`Pid`, `StartTime`, `ProgramName` → `ProcIdentity`
+|Kernel / network |bound port, sshd banner bytes |`LoopbackPort`, `SshBanner`
+|`ssh-keygen` |public key file |`HostPublicKey { kind: KeyType::Ed25519, key: KeyBase64 }`
+|QMP socket |JSON lines (at most 64 KiB each) |`QmpGreeting`, `QmpReply::{Return, Event, Error { class: QmpErrorClass, desc: QmpDesc }}`; `QmpDesc` is qemu's text with control characters dropped and cut at 256 characters
+|Terminal |window size |`TermSize { rows: NonZeroU16, cols: NonZeroU16 }`
+|Session |linger marker file |`Linger::{On, Off}`
+|Guest console |bytes from `console.log` |`GuestBytes` (untrusted; only exit is `Printable` via the sanitiser)
+|Home files |file contents under `$HOME` |`HomeFile { rel: HomeRel, bytes, mode: FileMode }`
+|===
+
+[[observed]]
+==== Observed inputs
+
+Inputs that must exist on the host are represented by types obtainable only from a *probe* that returns an `Observation` (the `HostDir` pattern):
+
+[source,rust]
+----
+// what a probe saw: nothing usable, a directory, a regular file (and whether the user may run it), anything else
+enum Observation { Missing, Directory { resolved: AbsDir }, File { resolved: AbsPath, executable: bool }, Other }
+// X::observe(&requested, probe: impl Fn(&AbsDir) -> Observation) -> Result<X, XError>
+----
+
+The probe is `HostFs::observe(&AbsPath) -> Result<Observation, FsError>` (canonicalise plus a kind check; every failure to look is `Missing`, only a task that did not finish is an error). An operation probes every path first, then hands the answers to the pure `X::observe` constructors, so those stay synchronous; the type holds the *resolved* path, so no plan can be built from an unchecked or unresolved path.
+Values are produced in the observe step of an operation, all of them before anything is spawned, and their errors are collected (`Validated`) so the operator sees every problem at once.
+Pure code (`plan`, decide functions) takes the observed types, never `AbsPath`, for anything that must exist.
+
+[cols="1,3"]
+|===
+|Type |Observation
+
+|`GuestHome` |the user's `$HOME` (`HomeDir`) with symlinks resolved, then the guest-home rules (not `/`, not under a reserved guest path, no control characters). The one resolved home is both the home the guest gets (so the guest's `HOME` and the mounts it sees agree) and the `protected` path handed to `Shares::validate`
+|`HostDir` |a shared directory, resolved (`Shares::validate` observes every mount through the probe)
+|`ExistingDir` |a directory that must exist, resolved: the `--base-nix-config` directory (`BaseSpec::Dir`)
+|`ExistingFile` |a regular file that must exist, resolved: each `home-files` entry under the home (a missing one is the `HomeFileMissing` warning and is skipped, not an error)
+|`Executable` |an executable regular file, resolved: `runner` and `virtiofsd` from the build out-link
+|===
+
+Paths the start creates itself (the runtime dir, sockets, records, `host.nix`) stay plain `AbsPath`/`AbsDir`: there is nothing to observe before they exist.
+
+Why resolved: on hosts where `/home` is a symlink (e.g. `/home -> /var/home`), an unresolved `$HOME` and the resolved paths of the mounts disagree. The guest then gets the home at a different path than the host user's, and the check that no mount covers the guest home (`HidesHome`) compares paths that never match, so a mount over the home passes unnoticed. One resolved home removes both.
+
+The refinements prove the predicate held when observed. Effects that rely on them still handle the state having changed since, with typed errors; the refinement does not replace that.
+
+==== Catalogue
+
+[cols="1,3"]
+|===
+|Type |Predicate
+
+|`VmName` |`[A-Za-z0-9][A-Za-z0-9-]{0,39}`; also the guest hostname
+|`UserName` |`[a-z_][a-z0-9_-]{0,31}`, not `root`
+|`Uid`, `Gid` |`1..=2^32-2`, distinct markers
+|`PresetName` |`[A-Za-z0-9][A-Za-z0-9._-]*`
+|`BaseSpec` |`Preset(PresetName) \| Dir(AbsDir)` (path-looking specs: contains `/`, starts with `~` or `.`)
+|`AbsPath`, `AbsDir` |absolute, normalised (no `.`, `..` or empty components); structs with a private field, total `join`/`parent`
+|`FlakePath`, `FlakeDir` |`AbsPath`/`AbsDir` of letters, digits, `/` and ``!$&'()*+,-.:;=@_~`` only (probed with Nix 2.35.4: `?`, `#`, `%` are URL syntax; space, controls, non-ASCII and `"<>[\]^`{|}` make Nix fail); the only paths `nix_build_argv` takes. Joining a `FlakeSegment` (`FileName`, `VmName`) is total
+|`FileName` |a fixed name of one path component, ASCII letters, digits, `.`, `_`, `-`; written as a `refined!` constant
+|`HostDir` |`AbsDir` observed to be a directory, symlinks resolved
+|`ExistingDir`, `ExistingFile`, `Executable` |a path observed to be a directory, a regular file, an executable file; symlinks resolved (<<observed>>)
+|`HomeDir` |`AbsDir` from `$HOME`
+|`GuestHome` |`HomeDir` observed with symlinks resolved; not `/`, not under a reserved guest path, no control characters (<<observed>>)
+|`HomeRel` |relative, normalised, no `..`, not starting with `~`
+|`GuestPath` |absolute path inside the guest, no control characters
+|`Mode` |`Rw \| Ro`
+|`MountSpec` |`PATH[:rw\|:ro]` with a non-empty path
+|`Mount` |`HostDir` + `Mode`
+|`Shares` |only from `validate(requests, protected, probe)`: at most 65535 (one tag each), no duplicates, all `HostDir`, paths the mounts table can hold (no tab or newline), none covering the guest home, parents first; every problem reported at once
+|`ShareTag` |`d1..d65535`; derives socket `dN.sock` and chardev `amoN`
+|`Socket` |`Control \| Store \| State \| Share(ShareTag)`: the sockets of a runtime dir, named `control.sock`, `ro-store.sock`, `state.sock`, `dN.sock`; parsed from the contract's names, rejecting unknown ones
+|`SocketName` |file name, no `/`, no whitespace, ends in `.sock`; made by `Socket::name`; names read from elsewhere are parsed into `Socket` (`Socket::parse`), so `SocketName` has no `parse`
+|`ShareTagName` |1..=36 bytes of ASCII letters, digits, `.`, `_`, `-`: a tag as the contract spells it (`amoeboid`, `ro-store`)
+|`StateFileName` |one path component of ASCII letters, digits, `.`, `_`, `-`, not `.`/`..`: a file name as the contract spells it
+|`SocketPath` |`AbsPath` of at most 107 bytes (`sun_path`)
+|`QemuArg` |non-empty, no whitespace (the runner word-splits `amoeboid-qemu-args`); built from `Fragment`s
+|`Word`, `Fragment` |`Word`: a literal of printable ASCII without `/`, a `refined!` constant; `Fragment`: a `Word`, a share tag, a host port, a guest port, an index number, a `Uid` or a `VmName`, the proven pieces `QemuArg`, `SocketName`, `RunDirName` and the per-user temp dir name are concatenated from
+|`NixString` |a Nix string literal produced by escaping (`\`, `"`, `${`); the only way text enters `host.nix`
+|`Argv` |program + arguments; built only from refined parts and `SshPassthrough`
+|`SshPort` |`Auto \| Fixed(1024..=65535)`
+|`LoopbackPort` |`1..=65535`, bound on 127.0.0.1
+|`GuestPort` |`1..=65535`, a port inside the guest (the contract's `guestSshPort`); distinct from `LoopbackPort`
+|`Seconds` |`1..=86400` (config)
+|`Timeout` |finite duration, `> 0`, `<= 86400 s` (CLI flags)
+|`RunDirName` |`amb_<VmName>`, derived (`Word` prefix literal + `VmName` fragment)
+|`Pid` |`> 0`
+|`StartTime` |clock ticks since boot from `/proc/PID/stat` field 22
+|`ProcIdentity` |`Pid` + `StartTime` + `ProgramName`
+|`ContractVersion` |`NonZeroU32`
+|`FileMode` |`0..=0o777`
+|`TermSize` |rows and columns non-zero
+|===
+
+==== Enforcement
+
+* `clippy.toml` `disallowed-types` lists `std::path::PathBuf`, `std::path::Path`, `std::ffi::OsString`, `std::ffi::OsStr` for the library; boundary modules (`adapters`, `config` decoding, the observation side of `ops`) carry a module-level `#[allow(clippy::disallowed_types)]` with the reason "boundary: refines raw input". The CLI's argument module is a boundary likewise.
+* Public signatures in `domain`, `plan`, `contract` and the decide functions mention no `String`, integer or path type except inside a refined type (checked in review; the disallowed-types lint covers paths).
+
+== VM lock and run lifecycle
+
+=== One lock
+
+`<data>/NAME/lock`, e.g. `~/.local/share/amoeboid/proj/lock`. The path is a pure function of `Paths` and `VmName`.
+
+Rules:
+
+* The file is created on demand and never deleted (deleting a lock file lets two holders lock different inodes).
+* Only the holder may change `<data>/NAME/run`, the runtime dir, or kill helpers of a dead run.
+* Every process of a run holds it: the launcher acquires it (`LOCK_EX \| LOCK_NB`) before any change, and each spawned process inherits the same open file description:
+** virtiofsd gets it as stdin (`Stdio::from(fd)`), which it does not read;
+** qemu gets a `dup` with `FD_CLOEXEC` cleared (rustix), closed in the parent right after spawn. Spawns are sequential in our process; library users must not spawn concurrently with `start` (documented contract: a concurrent child could inherit the lock).
+* Lock free means no process of the VM is alive. No sweep is needed in the normal case.
+* The kernel releases it when the last holder exits, including on SIGKILL.
+
+[cols="1,3"]
+|===
+|Operation |Protocol
+
+|`start` |try-lock; on failure classify via `run` record: `Running(Run)` (qemu identity alive) or `Dangling(Run)` (helpers alive, qemu gone) -> typed error with hint (`stop` cleans dangling helpers)
+|`stop` |QMP powerdown; wait for qemu identity to vanish (`timeouts.stop`); kill qemu if needed; terminate recorded helpers (verified identities); acquire the lock; remove `run`, clear the runtime dir; release
+|`restart` |`stop` keeps the lock and passes it to `start`
+|`status`/`list` |try-lock (released immediately) + `run` record; never modifies anything
+|===
+
+=== Run record
+
+`<data>/NAME/run`, KDL via the config codec, written atomically by the lock holder, removed by `stop`:
+
+[source,rust]
+----
+struct Run {
+    vm: VmName,
+    runtime: RuntimeDir,               // /run/user/1000/amb_proj/; not in the file: taken from the VmPaths the recorded vm must match
+    qemu: ProcIdentity,
+    helpers: Vec<(ShareRole, ProcIdentity)>,
+    ssh: LoopbackPort,
+    contract: ContractVersion,
+    console: Option<AbsPath>,           // console.log when detached
+}
+----
+
+`start` returns it (inside `Started`); the CLI resolves console tailing and the ssh command from it.
+
+`<data>/NAME/mounts` stays a separate persistent record of the last run's shares (same tab-separated format as today), written atomically and parsed strictly: a malformed file is a typed error, never silently treated as empty.
+
+=== Runtime dir
+
+`$XDG_RUNTIME_DIR/amb_<name>/` (fallback `$TMPDIR/amoeboid-<uid>/amb_<name>/`), mode 0700.
+Holds sockets, `amoeboid-qemu-args` and an `owner` file with the VM name.
+Unhashed: VM names are at most 40 chars, so the longest socket path (`/run/user/4294967294/amb_<40>/d65535.sock`, ~77 bytes) fits `sun_path` (108). `Paths` construction checks the bound so a long `$TMPDIR` fails early with a typed error.
+
+Preflight for `start` classifies the runtime dir: absent, present and lock free (stale, cleared by the new holder), present and locked (running or dangling).
+
+== Nix side
+
+=== Configs are directories
+
+`NixSource` is a directory checked for the expected layout (`flake.nix` at minimum).
+Resolution for a new VM: `--base-nix-config`, else `base-nix-config` from the config, else preset `default`.
+If the default preset does not exist, the error says so and hints at copying the reference config (e.g. this repo's `nix/`) to `<config>/nix_presets/default`. Nothing is created from inside the binary.
+
+=== Contract
+
+`base.nix` sets `amoeboid.contract = N` and the flake's linkFarm gains a third entry beside `runner` and `virtiofsd`:
+
+[source,nix]
+----
+contract = pkgs.writeText "amoeboid-contract.json" (builtins.toJSON {
+  version = 1;
+  home = "share";
+  controlSocket = "control.sock";
+  stateShare = { tag = "amoeboid"; socket = "state.sock"; mountPoint = "/mnt/amoeboid"; };
+  storeShare = { tag = "ro-store"; socket = "ro-store.sock"; };
+  extraArgsFile = "amoeboid-qemu-args";
+  stateFiles = [ "mounts" "hostname" "term" "ssh_host_ed25519_key" ];
+  guestSshPort = 22;
+});
+----
+
+After the build, Rust reads `<data>/NAME/vm/contract` (store path: host-owned, immutable), deserialises it into `Contract`, and compares field by field with the constants for that version.
+A config without `contract` (every pre-port preset) is `BuildError::ContractMissing` with a hint to rebase the VM onto an updated preset.
+The coupling table in `DEVELOPING.adoc` becomes checked data.
+
+Contract version 1 is the current `base.nix` behaviour plus the `contract` output.
+
+[[home-storage]]
+=== Home storage
+
+Config key `home-storage`, values `share` (default, implemented) and `volume` (modelled, decoder accepts it, `start` returns `StartError::NotImplemented(Feature::VolumeHome)`).
+
+[source,rust]
+----
+enum HomeStorage { Share, Volume /* TODO(volume-home): image path + size; ro state share; in-guest copy at boot */ }
+----
+
+Everything the host puts in the guest is data in the plan: `Vec<GuestFile { dest: GuestDest, bytes, mode }>` with `GuestDest::{State(..), Home(HomeRel), OwnConfig(..), Reference(..), Readme}`.
+`GuestDelivery` decides how it gets there; only `ShareDelivery` exists now. The contract's `home` field must equal the config's `home-storage`.
+
+The guest's own config copy (`OwnConfig`) is delivered only when the per-VM config was just created or rebased; the host never looks whether the guest still has it (Python re-seeded a missing copy by checking the guest share). The reference copy, `host.nix` and the README are delivered on every start.
+
+With `share`, the host keeps reading guest-written files only where the operator does it by hand (e.g. adopting the agent's config copy); amoeboid itself never reads them.
+
+== Errors
+
+=== Layers
+
+. *Value-object errors*, one enum per `parse`: `VmNameError::{Empty, TooLong { len }, BadChar { ch, at }, BadStart { ch }}`.
+. *Effect errors*, one enum per port operation, carrying operation, path and `io::ErrorKind`:
+`LockError::{Io { op, path, cause }, Held { path }, Unsupported { path }, Aborted { path }}` (the port knows only that the lock is held; the ops classify a held lock as running or dangling from the `run` record and `Procs::presence`),
+`QmpError::{Connect { socket, cause }, Io { phase, cause }, Closed { phase }, TooLong { phase }, Greeting(GreetingError), Reply { command, error }, Refused { command, class, desc }, Timeout { phase }}`,
+`BuildError::{NixMissing, Failed { status }, ContractMissing { at }, ContractMismatch { field, expected, found }}`, ...
+. *Use-case errors* composing the above: `StartError::{Preflight(NonEmpty<PreflightError>), Lock(LockError), Config(ConfigError), Mounts(NonEmpty<MountProblem>), Base(BaseError), Build(BuildError), HostKey(HostKeyError), Port(Retry<PortTaken, SpawnError>), Delivery(DeliveryError), Spawn { role, kind }, HelperDied { role, status }, Boot(BootError), NotImplemented(Feature), Failed { cause: Box<StartError>, cleanup: NonEmpty<CleanupError> }}`.
+
+Rules:
+
+* All public enums are exhaustive; adding a variant is a semver-major change. `match` on our enums never uses `_` (lint-enforced).
+* No `From<io::Error>` (or any foreign error) for our types: every effect error is constructed explicitly with its context. `From` exists only from a lower layer of ours to a higher one where the variant is unambiguous, so `?` composes.
+* `thiserror` derives `Display`/`Error`/`source()`.
+* Cleanup failures are part of the error (`Failed { cause, cleanup }`); `Drop` on guards is a last resort that cannot report.
+* Diagnostic texts follow the existing style: lowercase, no trailing period, action + object; hint is an imperative remedy.
+
+=== Diagnostic
+
+[source,rust]
+----
+trait Diagnostic {
+    fn code(&self) -> &'static str;     // stable id, e.g. "start.lock.held"
+    fn message(&self) -> String;
+    fn hint(&self) -> Option<String>;
+}
+----
+
+Implemented with a full `match` per enum, so a new variant does not compile without its code and hint.
+
+=== Transience at the type level
+
+[source,rust]
+----
+enum Fault<T, P> { Transient(T), Permanent(P) }
+enum Retry<T, P> { Exhausted { last: T, attempts: NonZeroU8 }, Permanent(P) }
+
+async fn retry<A, T, P, F, Fut>(clock: &impl Clock, policy: Backoff, op: F) -> Result<A, Retry<T, P>>
+where F: FnMut() -> Fut, Fut: Future<Output = Result<A, Fault<T, P>>>;
+
+trait Clock { fn sleep(&self, d: Duration) -> impl Future<Output = ()> + Send; }  // rails; the Clock port extends it with `now`
+----
+
+Only operations that can fail transiently return `Fault`; `retry` accepts nothing else. `Backoff` is exponential with a cap and a maximum attempt count (a `cap` below `initial` is raised to it); `retry` is a loop that pauses on the clock after each failed attempt but the last.
+
+Transient today: auto-picked ssh port taken between pick and qemu bind (re-pick, respawn qemu). A fixed port in use is permanent.
+
+=== Warnings
+
+Non-fatal outcomes are values: `Ok(Started { run, warnings: Vec<StartWarning>, foreground: Option<Running> })` with exhaustive
+`StartWarning::{LingerOff, LingerEnabled, LingerEnableFailed { reason }, HomeFileMissing { rel }, DanglingHelpersKilled { procs }, ...}`; similarly `StopWarning`.
+The CLI renders them as `amoeboid: warning: ...`.
+
+`stop` killing qemu after the timeout is an error, `StopError::ForcedKill { waited, qmp: Option<QmpError> }`; `restart` matches it and continues.
+
+[[resiliency]]
+== Resiliency
+
+[cols="1,3"]
+|===
+|Concern |Design
+
+|Torn host-owned records |one `AtomicWrite` helper (temp in same dir, write, `fsync`, rename, `fsync` dir) for `run`, `mounts`, `known_hosts`, `host.nix`, `run_config.kdl`
+|Rebase losing the VM's config |copy to `.nix.new`, then `renameat2(RENAME_EXCHANGE)` with `nix/`, then remove the old tree; a crash leaves either config, never none. On a filesystem without `RENAME_EXCHANGE` (EINVAL, ENOSYS, EOPNOTSUPP) the port falls back to Python's sequence (old tree renamed to `.nix.old`, new one renamed in, old removed; a failed second rename undoes the first) and returns `Replacement::NonAtomic`, which the operation turns into a warning; a crash inside that sequence can leave no `nix/`, with both trees kept beside it
+|Half-generated host key |generate into a temp dir under `ssh/`, rename into place
+|Strict records |`mounts` and `run` parse strictly; corruption is a typed error naming the file
+|Preflight |one `Preflight` value, all problems at once: `/dev/kvm`, `nix`, `ssh-keygen`, unprivileged user namespaces (virtiofsd `--sandbox=namespace`), `openat2` availability (Linux >= 5.6), runtime dir classification (a non-directory there is a problem; `Absent`/`Stale`/`Locked` is information), legacy Python run of the same name. The socket path length is not a preflight check: `Paths::resolve` refuses a root that is too long, so a `VmPaths` always fits
+|Helper dies before its socket appears |wait for socket and child exit concurrently; report `HelperDied { role, status }`
+|Port race |`Fault::Transient(PortTaken)` + `retry`
+|Logout removes the runtime dir |linger check per detached start (config `linger`: `enable` (default) or `warn`); pid identities are in `<data>/NAME/run`, so `stop` works without the runtime dir (falls back to kill when `control.sock` is gone)
+|Cancellation |a spawned child gets its guard in the same synchronous step (no `.await` between spawn and guard); guard drop sends SIGTERM to the verified identity
+|Pid reuse |`ProcIdentity` = pid + start time; `/proc/PID/stat` parsed after the last `)`
+|Guest locks itself out (planted symlinks) |fail closed with the exact path; `amoeboid repair --name N` removes the offending entries safely
+|Guest fills the disk |host writes fail with typed `NoSpace`; atomic writes keep host records intact; `volume` home storage is the future bound
+|Panics in dependencies |`panic = "unwind"` so guards run
+|===
+
+== Security invariants (carried over)
+
+* Guest-writable paths are written only through `GuestDelivery`, never read back to decide anything.
+* Nothing that varies per start enters the Nix build; per-start data goes through `amoeboid-qemu-args` (no whitespace inside arguments, relative socket paths) and state files.
+* Signal only verified `ProcIdentity`s.
+* ssh argv only from `plan::ssh_argv` (pinned key alias `amoeboid-NAME`, per-VM known_hosts, `StrictHostKeyChecking=yes`, forwarding disabled).
+* Guest console bytes reach a terminal only through `console::Printable` (streaming sanitiser: keeps SGR and valid UTF-8 text, drops other escapes, C0 controls but `\t`/`\n`, and C1 controls: U+0080..=U+009F encoded in UTF-8 and raw bytes 0x80..=0x9F outside a valid UTF-8 sequence, among them 8-bit CSI `0x9B`; state, including a started UTF-8 sequence, carried across chunks; a sequence cut off by the end of the input is never shown). The CLI receives `GuestBytes`, whose only conversion to displayable bytes is the sanitiser.
+* Everything interpolated into generated Nix is validated or escaped (`nix_string`).
+* Read-only shares are enforced by `virtiofsd --readonly`.
+* No hardcoded users, uids, home or host paths.
+
+== CLI
+
+* lexopt; long options only, no abbreviations; `--help` on every command; help texts ported from `cli.py` and kept consistent with README.
+* Commands unchanged: `start`, `restart`, `ssh`, `stop`, `list`, `presets`, `config`; new: `repair`.
+* Single place that prints diagnostics and warnings; exit codes: 0, 1 for errors, 128+N on signals.
+* tokio `signal` (SIGINT, SIGTERM, SIGHUP) cancels the running operation, so guards unwind.
+* Foreground: qemu inherits the terminal; Ctrl-C reaching the launcher triggers a QMP powerdown and keeps waiting, as today.
+* `--detach`: tails `run.console` through the sanitiser until `start` returns.
+* `ssh`: execs ssh (`CommandExt::exec`) with argv from `plan::ssh_argv`.
+* Linger enabling, prompts and confirmations live here; the library only reports state via `Session`.
+
+[[deps]]
+== Dependencies
+
+[cols="1,1,3"]
+|===
+|Crate |Where |Why
+
+|tokio |lib: `rt`, `process`, `net`, `time`, `io-util`; cli: + `macros`, `signal` |async runtime, child processes, unix sockets, timers, signals
+|rustix |lib |`openat2`, `renameat2`, `fcntl` (cloexec), `kill`, `getuid`/`getgid`, terminal size, `flock` where std lacks it
+|serde, serde_json |lib |`contract.json`, QMP
+|kdl |lib |parsing KDL v2 only; emission stays in our canonical emitter
+|thiserror |lib, cli |error derives
+|lexopt |cli |argument parsing
+|proptest |dev |property tests (only the places listed in <<pbt>>)
+|tokio `test-util` |dev |paused time in async tests
+|===
+
+Tools (mise tasks, not dependencies): `cargo-llvm-cov`, `cargo-deny`.
+
+`std::fs::File::lock` for the VM lock where it suffices. `cargo-deny` config pins the allowed set and licenses.
+
+== Lints
+
+[source,toml]
+----
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+dbg_macro = "deny"
+exit = "deny"
+print_stdout = "deny"   # allowed in amoeboid-cli render module only
+print_stderr = "deny"
+pedantic = { level = "warn", priority = -1 }
+----
+
+`Option` is allowed; it is a value. Tests may use `unwrap`/`expect` (`#[cfg(test)]` allow).
+
+== Testing
+
+The architecture exists to make almost everything a pure function over plain values, so almost everything is tested as one: construct the input value, call, compare the whole output value.
+Exhaustive example tables are the default. Property tests are confined to the short list in <<pbt>>.
+
+=== Layers
+
+[cols="1,2,3"]
+|===
+|Layer |Subject |How
+
+|Pure |value objects, decoders, KDL, config, plans, decide functions, sanitiser, diagnostics |example tables covering every branch and every error variant; whole-value equality
+|Interpreter |ops executing plans against ports |hand-written fake ports (pure state + call log); fault-injection and cancellation sweeps (<<sweeps>>)
+|Adapter |real effects |real syscalls on temp dirs and real (renamed `sleep`) processes; no fakes
+|CLI |parsing, help, rendering, exit codes |argv tables, help snapshots, one rendering test per diagnostic code
+|System |Nix, qemu, guest |manual, scratch VM (AGENTS.md procedure); never in automated tests
+|===
+
+=== Requirements that shape the code
+
+* *Whole-value equality.* Every value object, plan, fact set, record, warning and error derives `PartialEq, Eq, Debug`. Errors therefore store `io::ErrorKind` and the raw OS error number, never `io::Error`. Tests assert `assert_eq!(f(input), Ok(expected))` / `Err(expected)`, not fragments.
+* *Exhaustiveness witnesses.* Each public enum's test module has a `fn witness(e: &E)` that matches every variant without `_`, next to a table with at least one case per variant. Adding a variant fails to compile until a case is added.
+* *Diagnostic catalogue.* A test renders one instance of every error and warning variant (via the witnesses' tables) into `crates/amoeboid/tests/golden/diagnostics.txt`: code, message, hint. Codes must be unique. Any wording change shows up as a reviewed diff.
+* *Facts and plans are constructible by hand.* No private-field obstacle in tests: test-only constructors (`#[cfg(test)]`) or public fields on `Facts`/`Plan` structs (they are data, not invariant carriers). Refined types keep private fields; tests build them through `parse` (there is no other way).
+* *Every refinement has a predicate table:* values on each side of every edge of its predicate (bounds and bound ± 1, each forbidden character class, empty, maximum length and one over), and at least one case per variant of its error enum. `parse(x.get().clone()) == Ok(x)` for accepted values. Grammar-shaped predicates additionally get the property test listed in <<pbt>>.
+* *Every boundary has a rejection table:* malformed raw input at each boundary in <<refinement>> (bad env values, corrupt records, hostile `contract.json`, malformed `/proc/PID/stat`, unexpected QMP JSON, a non-ed25519 key file) maps to the expected typed error.
+* *No hidden inputs.* No environment, clock, randomness, uid or cwd read below `World`; time goes through `Clock`. Tests are deterministic; tokio tests run with paused time (`test-util`, dev-only).
+* *Decide functions are scenario-tested.* For each op, a table of scenarios `(request, facts) -> Result<Plan, Error>` covering every decision branch: new VM vs existing, rebase, previous mounts vs default mounts, fixed vs auto port, foreground vs detach, `home-storage` variants, every lock classification.
+
+[[sweeps]]
+=== Interpreter sweeps
+
+Enumerated, not random:
+
+Fault injection::
+For a plan with _n_ effectful steps, run it _n_ times; run _k_ makes step _k_ fail with each error the port can return. Assert: the returned error is the expected variant (wrapped as the design says), and every resource acquired by steps before _k_ is released (fake ports track live processes, lock state, temp files). For `start` this proves "any failure unwinds whatever was started".
+
+Cancellation::
+Poll the op future and drop it after _m_ polls, for every _m_ up to completion. Assert the same release invariant, and that no step after the drop point ran.
+
+The release invariant on a fake world is: no live process of the run, and the lock free unless the op hands it on (restart). Temp files are internal to the adapters (atomic write, tree swap, key staging) and their cleanup is proven by the adapter tests, so the fakes do not model them. Proves guards are created in the spawning step.
+
+Cleanup failure::
+Repeat fault injection with the cleanup call also failing; assert `StartError::Failed { cause, cleanup }` carries both.
+
+[[pbt]]
+=== Property tests (the only places)
+
+[cols="1,3"]
+|===
+|Subject |Property
+
+|KDL |`parse(emit(v)) == Ok(v)` for every `Value`; `emit(parse(t)) == t` for canonical text
+|`RunConfig` |`decode(encode(c)) == Ok(c)`; `encode(decode(t)) == t`
+|Console sanitiser |output is independent of how the input is chunked; output contains no ESC outside SGR, no C0 control but `\t`/`\n`, and no C1 control (UTF-8 aware)
+|`/proc/PID/stat` parsing |start time recovered for any `comm` (spaces, parentheses, newlines)
+|`Shares::validate` |output ordered parents-first; every problem in the input is reported
+|Name grammars |`VmName`, `UserName`, `PresetName` accept exactly their grammar (generators for valid and near-miss strings)
+|===
+
+Default 256 cases, `rs-test-thorough` 5000; regression files (`proptest-regressions/`) are committed.
+
+=== Golden files
+
+Generated from the Python implementation while it existed and kept as fixtures afterwards: rendered configs, nix/virtiofsd/ssh argv, qemu args, mount tables, `host.nix`, console samples. Rust matches byte for byte.
+
+=== Adapter tests
+
+Real effects on temp dirs created with std only (`env::temp_dir` + unique names, removed by a guard; no `tempfile` crate):
+planted symlinks against every `ShareDelivery` operation (one named test per attack), atomic write interrupted mid-way, `RENAME_EXCHANGE` swap, lock inheritance by a child and release on its exit, identity checks against a renamed `sleep` and a recycled pid, QMP against a fake socket server.
+
+=== Measures
+
+* Branch coverage (`cargo llvm-cov --branch`): 100 % for pure modules (`domain`, `kdl`, `config`, `layout`, `plan`, `console`, `contract`, decide functions), reported for the rest.
+* Run via a mise task, not a crate dependency.
+* `--branch` is unstable: the `rs-cov` task sets `RUSTC_BOOTSTRAP=1`, so coverage is measured with the same pinned stable compiler as tests and lints. Recheck on every toolchain bump.
+* Test code does not count: in-file test modules (and `testing`) carry `#[cfg_attr(coverage_nightly, coverage(off))]`; cargo-llvm-cov sets `coverage_nightly`, and `lib.rs` enables `feature(coverage_attribute)` under it.
+* No mutation testing: whole-value equality, full branch coverage, edge tables for every refinement, golden files and exhaustiveness witnesses already pin down what surviving mutants would reveal.
+
+=== Conventions
+
+* Test names are sentences stating the property: `vm_name_longer_than_forty_chars_is_refused`, `failed_helper_spawn_releases_the_lock`.
+* Tables are `const`/`static` arrays of `(input, expected)` iterated in one test, with the case index in the failure message; one table per behaviour.
+* Tests may use `unwrap`/`expect` only to build fixtures, never to assert.
+* Nothing in tests runs Nix or qemu.
+
+[[compat]]
+== Compatibility
+
+* `run_config.kdl`: same format and keys; new optional keys `linger` (`"enable"` default, `"warn"`) and `home-storage` (`"share"` default, `"volume"`). Old files load unchanged. Files rendered by Rust contain the new keys and are rejected by the Python version (unknown key); acceptable during migration.
+* Data layout: unchanged except new `<data>/NAME/lock` and `<data>/NAME/run`; `mounts` keeps its format.
+* Runtime layout: `$XDG_RUNTIME_DIR/amb_<name>/` instead of `$XDG_RUNTIME_DIR/amoeboid/<name>/`; pid files replaced by `run`. Preflight detects a VM still running under the Python layout and refuses with a hint to stop it with the Python launcher.
+* VM names longer than 40 chars are refused (`VmNameError::TooLong`), hint: rename `<data>/NAME`.
+* Existing presets/VMs lack the contract: rebase onto an updated preset (`--base-nix-config`).
+* Config errors: all problems of a file are still reported at once, but `ConfigError::Invalid`'s message joins them with `; ` on one line (the diagnostic catalogue forbids newlines; the CLI may render the problems one per line from the list), and each unknown key is its own problem instead of one `unknown key(s) a, b; known: ...` line. Operator-accepted.
+* Console: the sanitiser also drops C1 controls (Python passed 8-bit C1, including `0x9B`, through); a malformed CSI is dropped whole and a sequence cut off at the end of the input is held, never shown.
+* Paths: a data directory whose path has a character outside letters, digits, `/` and ``!$&'()*+,-.:;=@_~`` (e.g. a space, non-ASCII, `?`, `#`, `%`) is refused when the layout is resolved (Python passed it to `nix build`, which reads some as URL syntax and rejects the rest with a confusing error).
+* Guest's own config copy (`home/amoeboid/nix`): written only when the VM's config is created or rebased; a copy the guest deleted is not restored until the next rebase (Python re-copied it when missing, which needed reading the guest share). Operator decision.
+* Rebase on a filesystem without `RENAME_EXCHANGE`: the config copy is replaced with the two-rename sequence Python always used, and the operator gets a warning that the replacement was not atomic (elsewhere the swap is atomic, an improvement over Python).
+* Mounts: more than 65535 shares, or a shared path with a tab or newline, is a `MountProblem` (Python produced tags past `d65535` or a corrupt mounts table).
+
+== Deferred
+
+* `volume` home storage (block image via `microvm.volumes`, read-only state share, in-guest copies at boot): removes guest-writable host space entirely.
+* Daemon / supervision (systemd user units are the first candidate).
+* Sans-IO state machines for ops, if a daemon needs to interleave many VMs.
+* `--dry-run` printing plans.
+* Config-level lock for concurrent `run_config.kdl` saves.

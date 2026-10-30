@@ -1,0 +1,9 @@
+{
+  "mounts": [
+    {
+      "path": "/srv/dev/app",
+      "mode": "rw"
+    }
+  ],
+  "ssh_port": 40022
+}

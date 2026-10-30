@@ -1,0 +1,6 @@
+{
+  "user": "alice",
+  "uid": 1000,
+  "gid": 100,
+  "home": "/home/back\\slash"
+}
